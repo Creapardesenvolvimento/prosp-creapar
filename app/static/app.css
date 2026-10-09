@@ -1,0 +1,65 @@
+:root {
+  --bg: #f5f6f8;
+  --surface: #fff;
+  --text: #1c2330;
+  --muted: #667085;
+  --border: #dde1e7;
+  --accent: #1f6feb;
+  --danger: #c0392b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.topbar nav { flex: 1; display: flex; gap: 16px; }
+.topbar form { display: flex; align-items: center; gap: 12px; margin: 0; }
+
+a { color: var(--accent); text-decoration: none; }
+.muted { color: var(--muted); }
+.erro { color: var(--danger); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+}
+.login { max-width: 360px; margin: 10vh auto 0; display: grid; gap: 14px; }
+.login h1 { margin: 0; font-size: 20px; }
+
+label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+input, select, textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface);
+}
+
+button {
+  font: inherit;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+button.link { background: none; color: var(--accent); padding: 0; }

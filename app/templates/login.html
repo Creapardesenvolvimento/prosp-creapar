@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Entrar{% endblock %}
+{% block content %}
+<form method="post" action="/login" class="card login">
+  <h1>Entrar</h1>
+  {% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+  <label>E-mail
+    <input type="email" name="email" required autofocus autocomplete="username">
+  </label>
+  <label>Senha
+    <input type="password" name="senha" required autocomplete="current-password">
+  </label>
+  <button type="submit">Entrar</button>
+</form>
+{% endblock %}
