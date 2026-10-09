@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ numero.nome_exibicao }}{% endblock %}
+{% block content %}
+<p><a href="/numeros">← Números</a></p>
+<div class="titulo">
+  <h1>{{ numero.nome_exibicao }}</h1>
+  <span class="status {{ numero.status }}">{{ numero.status|replace("_", " ") }}</span>
+</div>
+{% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+
+{% if numero.status == "aguardando_qr" %}
+<div class="card">
+  <h2>Leia o QR com o chip</h2>
+  <div id="qr" hx-get="/numeros/{{ numero.id }}/qr" hx-trigger="load" hx-swap="outerHTML">
+    <p class="muted">Gerando QR…</p>
+  </div>
+</div>
+{% endif %}
+
+{% if numero.status == "desconectado" %}
+<div class="alerta">
+  Este número caiu e está fora do rodízio{% if numero.motivo_desconexao %} (código {{ numero.motivo_desconexao }}){% endif %}.
+  Tente reconectar; se o chip foi banido ou perdido, marque abaixo para substituí-lo.
+</div>
+{% endif %}
+
+<dl class="card dados">
+  <dt>Telefone</dt><dd>{{ numero.telefone or "—" }}</dd>
+  <dt>Instância</dt><dd><code>{{ numero.instance_name }}</code></dd>
+  <dt>Servidor</dt><dd>{{ numero.server.nome }}</dd>
+  <dt>Ativado em</dt><dd>{{ numero.data_ativacao.strftime("%d/%m/%Y") if numero.data_ativacao else "—" }}</dd>
+  <dt>Dia da rampa</dt><dd>{{ dia or "—" }}</dd>
+  <dt>Envios hoje / limite</dt><dd>{{ numero.envios_hoje }} / {{ numero.limite_diario_atual }}</dd>
+  <dt>Caixa no Chatwoot</dt><dd>{{ numero.chatwoot_inbox_id or "ainda não configurada" }}</dd>
+  {% if numero.substitui %}
+  <dt>Substitui</dt><dd><a href="/numeros/{{ numero.substitui.id }}">{{ numero.substitui.nome_exibicao }}</a></dd>
+  {% endif %}
+  {% if substituto %}
+  <dt>Substituído por</dt><dd><a href="/numeros/{{ substituto.id }}">{{ substituto.nome_exibicao }}</a></dd>
+  {% endif %}
+</dl>
+
+{% if numero.status != "removido" %}
+<div class="acoes">
+  {% if numero.status == "conectado" %}
+  <form method="post" action="/numeros/{{ numero.id }}/pausar"><button>Pausar</button></form>
+  {% endif %}
+  {% if numero.status == "pausado" %}
+  <form method="post" action="/numeros/{{ numero.id }}/retomar"><button>Retomar</button></form>
+  {% endif %}
+  {% if numero.status == "desconectado" %}
+  <form method="post" action="/numeros/{{ numero.id }}/reconectar"><button>Reconectar (novo QR)</button></form>
+  {% endif %}
+  {% if numero.status == "banido" and not substituto %}
+  <a class="botao" href="/numeros/novo?substitui={{ numero.id }}">Cadastrar substituto</a>
+  {% endif %}
+  {% if numero.status != "banido" %}
+  <form method="post" action="/numeros/{{ numero.id }}/banir"
+        onsubmit="return confirm('Marcar como banido/perdido? O número sai do rodízio de vez e você segue para cadastrar o substituto.')">
+    <button class="perigo">Banido / perdido — substituir</button>
+  </form>
+  {% endif %}
+  <form method="post" action="/numeros/{{ numero.id }}/remover"
+        onsubmit="return confirm('Remover? A instância é desconectada e apagada da Evolution. O histórico fica no painel.')">
+    <button class="perigo">Remover</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

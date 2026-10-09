@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import setup_logging as celery_setup_logging
 
 from app.config import get_settings
@@ -6,7 +7,7 @@ from app.log import setup_logging
 
 settings = get_settings()
 
-celery_app = Celery("creapar", broker=settings.redis_url, backend=settings.redis_url, include=["app.tasks"])
+celery_app = Celery("creapar", broker=settings.redis_url, backend=settings.redis_url, include=["app.tasks", "app.tasks.numeros"])
 celery_app.conf.update(
     timezone=settings.timezone,
     enable_utc=True,
@@ -15,7 +16,16 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     result_expires=3600,
     broker_connection_retry_on_startup=True,
-    beat_schedule={},
+    beat_schedule={
+        "conferir-conexoes": {
+            "task": "numeros.conferir_conexoes",
+            "schedule": settings.conferir_conexoes_segundos,
+        },
+        "virada-do-dia": {
+            "task": "numeros.virada_do_dia",
+            "schedule": crontab(hour=0, minute=0),
+        },
+    },
 )
 
 

@@ -2,5 +2,7 @@
 {% block title %}Início{% endblock %}
 {% block content %}
 <h1>Olá, {{ user.nome }}</h1>
-<p class="muted">As telas de números, buscas, campanhas e leads entram aqui nas próximas fases.</p>
+{% include "numeros/_alertas.html" %}
+<p><strong>{{ no_rodizio }}</strong> número(s) conectado(s) no rodízio. <a href="/numeros">Ver números</a></p>
+<p class="muted">As telas de buscas, campanhas e leads entram aqui nas próximas fases.</p>
 {% endblock %}

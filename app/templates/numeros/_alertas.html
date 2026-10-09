@@ -1,0 +1,8 @@
+{% if alertas %}
+<div class="alerta">
+  <strong>{{ alertas|length }} número(s) desconectado(s) e fora do rodízio:</strong>
+  {% for n in alertas %}
+  <a href="/numeros/{{ n.id }}">{{ n.nome_exibicao }}</a>{% if not loop.last %}, {% endif %}
+  {% endfor %}
+</div>
+{% endif %}

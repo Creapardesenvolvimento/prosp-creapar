@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Números{% endblock %}
+{% block content %}
+<div class="titulo">
+  <h1>Números de WhatsApp</h1>
+  <a class="botao" href="/numeros/novo">Adicionar número</a>
+</div>
+{% include "numeros/_alertas.html" %}
+
+{% if numeros %}
+<div class="tabela-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>Nome</th><th>Telefone</th><th>Status</th><th>Dia da rampa</th>
+      <th>Envios hoje / limite</th><th>Servidor</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for n in numeros %}
+    <tr>
+      <td><a href="/numeros/{{ n.id }}">{{ n.nome_exibicao }}</a></td>
+      <td>{{ n.telefone or "—" }}</td>
+      <td><span class="status {{ n.status }}">{{ n.status|replace("_", " ") }}</span></td>
+      <td>{{ dia_de_rampa(n) or "—" }}</td>
+      <td>{{ n.envios_hoje }} / {{ n.limite_diario_atual }}</td>
+      <td>{{ n.server.nome }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Nenhum número cadastrado ainda.</p>
+{% endif %}
+
+{% if removidos %}
+<details>
+  <summary>Removidos ({{ removidos|length }})</summary>
+  <ul>
+    {% for n in removidos %}
+    <li><a href="/numeros/{{ n.id }}">{{ n.nome_exibicao }}</a> <span class="muted">{{ n.telefone or "" }}</span></li>
+    {% endfor %}
+  </ul>
+</details>
+{% endif %}
+{% endblock %}

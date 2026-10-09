@@ -1,0 +1,10 @@
+<div id="qr" hx-get="/numeros/{{ numero.id }}/qr" hx-trigger="every 5s" hx-swap="outerHTML">
+  {% if erro %}
+  <p class="erro">{{ erro }}</p>
+  {% elif qr %}
+  <img src="{{ qr }}" alt="QR code para conectar o WhatsApp" width="280" height="280">
+  <p class="muted">No celular: WhatsApp → Dispositivos conectados → Conectar dispositivo.</p>
+  {% else %}
+  <p class="muted">Gerando QR…</p>
+  {% endif %}
+</div>

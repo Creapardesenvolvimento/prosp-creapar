@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Servidores{% endblock %}
+{% block content %}
+<h1>Servidores Evolution</h1>
+<div class="tabela-wrap">
+<table>
+  <thead><tr><th>Nome</th><th>URL</th><th>Situação</th><th></th></tr></thead>
+  <tbody>
+    {% for s in servers %}
+    <tr>
+      <td>{{ s.nome }}</td>
+      <td>{{ s.base_url }}</td>
+      <td>{{ "ativo" if s.ativo else "inativo" }}</td>
+      <td>
+        <form method="post" action="/servidores/{{ s.id }}/alternar">
+          <button class="link">{{ "Desativar" if s.ativo else "Ativar" }}</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="muted">Nenhum servidor cadastrado.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<form method="post" action="/servidores" class="card form">
+  <h2>Adicionar servidor</h2>
+  <label>Nome <input type="text" name="nome" required maxlength="120"></label>
+  <label>URL base <input type="url" name="base_url" required placeholder="https://"></label>
+  <label>API key
+    <input type="password" name="api_key" required autocomplete="off">
+    <small>Fica criptografada no banco e não é exibida de novo.</small>
+  </label>
+  <button type="submit">Salvar</button>
+</form>
+{% endblock %}

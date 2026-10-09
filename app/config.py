@@ -17,6 +17,10 @@ class Settings(BaseSettings):
 
     timezone: str = "America/Sao_Paulo"
 
+    # Rampa de aquecimento: "dia_inicial:limite_diario" separados por vírgula.
+    rampa_limites: str = "1:10,4:20,8:40,15:70,22:100,31:150"
+    conferir_conexoes_segundos: int = 120
+
     evolution_base_url: str = ""
     evolution_api_key: str = ""
 

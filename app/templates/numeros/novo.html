@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Adicionar número{% endblock %}
+{% block content %}
+<h1>{% if substitui %}Substituir {{ substitui.nome_exibicao }}{% else %}Adicionar número{% endif %}</h1>
+{% if substitui %}
+<p class="muted">
+  O número novo entra no lugar de <strong>{{ substitui.nome_exibicao }}</strong>
+  ({{ substitui.telefone or "sem telefone" }}), mas começa a rampa de aquecimento do zero.
+</p>
+{% endif %}
+
+{% if not servers %}
+<p class="erro">Nenhum servidor Evolution ativo. <a href="/servidores">Cadastre um servidor</a> primeiro.</p>
+{% else %}
+<form method="post" action="/numeros" class="card form">
+  {% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+  {% if substitui %}<input type="hidden" name="substitui_numero_id" value="{{ substitui.id }}">{% endif %}
+  <label>Nome de exibição
+    <input type="text" name="nome_exibicao" value="{{ nome }}" required maxlength="120" autofocus>
+    <small>Vira o nome da caixa de entrada no Chatwoot. Não pode repetir o de outro número.</small>
+  </label>
+  <label>Servidor Evolution
+    <select name="server_id">
+      {% for s in servers %}<option value="{{ s.id }}">{{ s.nome }}</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit">Criar e gerar QR</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -4,10 +4,13 @@ import logging
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
+from app.models import WhatsappNumber
+from app.services import numeros
 from app.services.idempotency import body_key, register_event
 
 logger = logging.getLogger(__name__)
@@ -23,6 +26,16 @@ def evolution_handler(event: str):
         return fn
 
     return decorator
+
+
+@evolution_handler("connection.update")
+def on_connection_update(db: Session, payload: dict) -> None:
+    numero = db.scalar(select(WhatsappNumber).where(WhatsappNumber.instance_name == payload.get("instance")))
+    if numero is None:
+        logger.warning("connection.update de instância desconhecida", extra={"instance": payload.get("instance")})
+        return
+    data = payload.get("data") or {}
+    numeros.aplicar_estado(db, numero, data.get("state"), data.get("statusReason"))
 
 
 def _normalize_event(name: str) -> str:
