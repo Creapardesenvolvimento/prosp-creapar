@@ -2,10 +2,10 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db import SessionLocal
-from app.models import Reuniao, ReuniaoStatus, WebhookEvent
+from app.models import Reuniao, ReuniaoStatus, Vendedor, WebhookEvent
 from app.services import agenda as svc
 from app.services import config_sistema
 from app.services.agenda import AgendaError, Regras
@@ -213,3 +213,49 @@ def test_config_salva_notificacoes_pelo_painel(logged_client):
     assert (v["notificar_telefone"], v["resumo_hora"], v["resumo_automatico"], v["avisar_vendedor"]) == (
         NOTIFICACOES, "07:30", True, False,  # checkbox desmarcado no formulário = desligado
     )
+
+
+# --- exclusão de vendedor -----------------------------------------------------------
+
+
+def test_excluir_vendedor_sem_reunioes_apaga(db, ana):
+    assert svc.excluir_vendedor(db, ana, AGORA) is True
+    db.commit()
+    assert db.scalar(select(func.count()).select_from(Vendedor)) == 0
+
+
+def test_excluir_vendedor_com_reuniao_futura_e_bloqueado(db, ana):
+    reuniao(db, sp(12, 14))
+    with pytest.raises(AgendaError, match="agendada"):
+        svc.excluir_vendedor(db, ana, AGORA)
+
+
+def test_excluir_vendedor_com_historico_arquiva(db, ana):
+    r = reuniao(db, sp(12, 14))
+    svc.mudar_status(db, r, ReuniaoStatus.REALIZADA)
+    assert svc.excluir_vendedor(db, ana, AGORA) is False
+    db.commit()
+    assert (ana.ativo, ana.excluido_em is not None) == (False, True)
+    assert svc.horarios_livres(db, AGORA, REGRAS) == []
+    assert db.get(Reuniao, r.id).vendedor.nome == "Ana"  # histórico preservado
+
+
+def test_excluir_vendedor_pelo_painel(logged_client, db, ana):
+    lista = logged_client.get("/vendedores").text
+    assert f'action="/vendedores/{ana.id}/excluir"' in lista and "editar" in lista
+    assert "Excluir vendedor" in logged_client.get(f"/vendedores/{ana.id}").text
+
+    futura = datetime.now(SP) + timedelta(days=30)  # futura de verdade (a tela usa o relógio real)
+    r = Reuniao(vendedor_id=ana.id, lead_nome="Futura", inicio=futura, fim=futura + timedelta(minutes=30))
+    db.add(r)
+    db.commit()
+    resp = logged_client.post(f"/vendedores/{ana.id}/excluir")
+    assert "erro=" in resp.headers["location"]
+
+    with SessionLocal() as s:
+        svc.mudar_status(s, s.get(Reuniao, r.id), ReuniaoStatus.CANCELADA)
+        s.commit()
+    resp = logged_client.post(f"/vendedores/{ana.id}/excluir")
+    assert "ok=" in resp.headers["location"]
+    assert "Ana" not in logged_client.get("/vendedores").text
+    assert logged_client.get(f"/vendedores/{ana.id}").status_code == 404

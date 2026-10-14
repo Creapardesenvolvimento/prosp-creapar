@@ -5,11 +5,13 @@
   <h1>Vendedores</h1>
   <a class="botao" href="/vendedores/novo">Adicionar vendedor</a>
 </div>
+{% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+{% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
 
 {% if vendedores %}
 <div class="tabela-wrap">
 <table>
-  <thead><tr><th>Nome</th><th>WhatsApp</th><th>Atende</th><th>Link</th><th>Situação</th></tr></thead>
+  <thead><tr><th>Nome</th><th>WhatsApp</th><th>Atende</th><th>Link</th><th>Situação</th><th></th></tr></thead>
   <tbody>
     {% for v in vendedores %}
     <tr>
@@ -21,6 +23,12 @@
       </td>
       <td>{{ "sim" if v.link_reuniao else "—" }}</td>
       <td><span class="status {{ 'conectado' if v.ativo else '' }}">{{ "ativo" if v.ativo else "inativo" }}</span></td>
+      <td>
+        <div class="acoes">
+          <a href="/vendedores/{{ v.id }}">editar</a>
+          {% include "vendedores/_excluir.html" %}
+        </div>
+      </td>
     </tr>
     {% endfor %}
   </tbody>

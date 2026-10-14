@@ -1,4 +1,4 @@
-"""aviso das reuniões no WhatsApp de notificações
+"""aviso das reuniões no WhatsApp de notificações e exclusão de vendedor
 
 Revision ID: 0009
 Revises: 0008
@@ -16,9 +16,13 @@ def upgrade() -> None:
     with op.batch_alter_table("reunioes") as batch:
         batch.add_column(sa.Column("notificado_em", sa.DateTime(timezone=True)))
         batch.add_column(sa.Column("cancelamento_notificado_em", sa.DateTime(timezone=True)))
+    with op.batch_alter_table("vendedores") as batch:
+        batch.add_column(sa.Column("excluido_em", sa.DateTime(timezone=True)))
 
 
 def downgrade() -> None:
+    with op.batch_alter_table("vendedores") as batch:
+        batch.drop_column("excluido_em")
     with op.batch_alter_table("reunioes") as batch:
         batch.drop_column("cancelamento_notificado_em")
         batch.drop_column("notificado_em")

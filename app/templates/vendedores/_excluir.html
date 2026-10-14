@@ -1,0 +1,4 @@
+<form method="post" action="/vendedores/{{ v.id }}/excluir"
+      onsubmit='return confirm({{ ("Excluir " ~ v.nome ~ "? Ele sai da agenda e não recebe mais reuniões. As reuniões antigas continuam no histórico.")|tojson }})'>
+  <button class="link perigo-link">excluir</button>
+</form>

@@ -23,6 +23,8 @@ class Vendedor(Base):
     email: Mapped[str | None] = mapped_column(String(255))
     link_reuniao: Mapped[str | None] = mapped_column(String(500))
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Excluído com reuniões no histórico: some do painel, mas o registro fica para as reuniões antigas.
+    excluido_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     horarios: Mapped[list["VendedorHorario"]] = relationship(

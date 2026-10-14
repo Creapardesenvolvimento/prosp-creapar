@@ -20,7 +20,7 @@ router = APIRouter(dependencies=[Depends(current_user)])
 
 def _vendedor(db: Session, vendedor_id: int) -> Vendedor:
     vendedor = db.get(Vendedor, vendedor_id)
-    if vendedor is None:
+    if vendedor is None or vendedor.excluido_em is not None:
         raise HTTPException(status_code=404)
     return vendedor
 
@@ -30,12 +30,20 @@ def _local(valor: datetime) -> datetime:
 
 
 @router.get("/vendedores")
-def vendedores(request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    lista = db.scalars(select(Vendedor).options(selectinload(Vendedor.horarios)).order_by(Vendedor.nome)).all()
+def vendedores(
+    request: Request,
+    erro: str | None = None,
+    ok: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    lista = db.scalars(
+        select(Vendedor).where(Vendedor.excluido_em.is_(None)).options(selectinload(Vendedor.horarios)).order_by(Vendedor.nome)
+    ).all()
     return templates.TemplateResponse(
         request,
         "vendedores/lista.html",
-        {"user": user, "vendedores": lista, "dias": DIAS_SEMANA, "faixas": svc.formatar_faixas},
+        {"user": user, "vendedores": lista, "dias": DIAS_SEMANA, "faixas": svc.formatar_faixas, "erro": erro, "ok": ok},
     )
 
 
@@ -110,6 +118,19 @@ async def atualizar_vendedor(vendedor_id: int, request: Request, db: Session = D
     return await _salvar(request, db, user, _vendedor(db, vendedor_id))
 
 
+@router.post("/vendedores/{vendedor_id}/excluir")
+def excluir_vendedor(vendedor_id: int, db: Session = Depends(get_db)):
+    vendedor = _vendedor(db, vendedor_id)
+    nome = vendedor.nome
+    try:
+        svc.excluir_vendedor(db, vendedor)
+    except AgendaError as exc:
+        db.rollback()
+        return RedirectResponse(f"/vendedores?erro={quote(str(exc))}", status_code=303)
+    db.commit()
+    return RedirectResponse(f"/vendedores?ok={quote(f'{nome} foi excluído.')}", status_code=303)
+
+
 @router.post("/vendedores/{vendedor_id}/bloqueios")
 async def criar_bloqueio(vendedor_id: int, request: Request, db: Session = Depends(get_db)):
     vendedor = _vendedor(db, vendedor_id)
@@ -146,7 +167,7 @@ def agenda(
     if vendedor_id:
         query = query.where(Reuniao.vendedor_id == vendedor_id)
     livres = svc.horarios_livres(db)
-    vendedores = {v.id: v for v in db.scalars(select(Vendedor).order_by(Vendedor.nome))}
+    vendedores = {v.id: v for v in db.scalars(select(Vendedor).where(Vendedor.excluido_em.is_(None)).order_by(Vendedor.nome))}
     return templates.TemplateResponse(
         request,
         "agenda.html",

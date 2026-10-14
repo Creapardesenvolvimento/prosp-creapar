@@ -31,6 +31,12 @@
 </form>
 
 {% if vendedor %}
+<div class="card">
+  <h2>Excluir vendedor</h2>
+  <p class="muted">Ele sai da agenda e da lista. Reuniões antigas continuam no histórico. Com reunião futura agendada, cancele-a antes.</p>
+  {% with v = vendedor %}{% include "vendedores/_excluir.html" %}{% endwith %}
+</div>
+
 <div class="card" id="bloqueios">
   <h2>Bloqueios (folga, férias, compromisso)</h2>
   {% if vendedor.bloqueios %}

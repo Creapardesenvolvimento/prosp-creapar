@@ -321,6 +321,33 @@ def salvar_vendedor(
     return vendedor
 
 
+def excluir_vendedor(db: Session, vendedor: Vendedor, agora: datetime | None = None) -> bool:
+    """Exclui o vendedor. Retorna True se apagou de vez, False se só arquivou (tem reuniões no histórico).
+
+    Com reunião futura agendada não exclui: o time precisa cancelar ou remarcar antes.
+    """
+    agora = agora or datetime.now(timezone.utc)
+    futuras = db.scalar(
+        select(func.count()).where(
+            Reuniao.vendedor_id == vendedor.id, Reuniao.status == ReuniaoStatus.AGENDADA, Reuniao.fim > utc(agora)
+        )
+    )
+    if futuras:
+        raise AgendaError(
+            f"{vendedor.nome} tem {futuras} reunião(ões) agendada(s). Cancele-as na Agenda antes de excluir, "
+            "ou desmarque \"Ativo\" para ele não receber reuniões novas."
+        )
+    tem_historico = db.scalar(select(func.count()).where(Reuniao.vendedor_id == vendedor.id))
+    if tem_historico:
+        vendedor.ativo = False
+        vendedor.excluido_em = agora
+    else:
+        db.delete(vendedor)
+    db.flush()
+    logger.info("vendedor excluído", extra={"vendedor_id": vendedor.id, "arquivado": bool(tem_historico)})
+    return not tem_historico
+
+
 def adicionar_bloqueio(
     db: Session, vendedor: Vendedor, inicio_local: str, fim_local: str, motivo: str, regras: Regras | None = None
 ) -> VendedorBloqueio:
