@@ -124,3 +124,10 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--text); 
 .lista { padding-left: 18px; }
 .lista li { margin-bottom: 6px; }
 .lista li form { display: inline; margin-left: 8px; }
+
+.status.busca-concluida { background: #dcf5e3; color: #17663a; }
+.status.busca-executando, .status.busca-processando, .status.busca-pendente { background: #e3edff; color: #1b4fb3; }
+.status.busca-erro { background: #fde2df; color: #9c2b1f; }
+.numeros-resumo { display: flex; flex-wrap: wrap; gap: 24px; margin: 12px 0; }
+.numeros-resumo div { display: grid; }
+.numeros-resumo strong { font-size: 24px; }

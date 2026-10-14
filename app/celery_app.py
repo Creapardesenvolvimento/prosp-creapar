@@ -7,7 +7,7 @@ from app.log import setup_logging
 
 settings = get_settings()
 
-celery_app = Celery("creapar", broker=settings.redis_url, backend=settings.redis_url, include=["app.tasks", "app.tasks.numeros", "app.tasks.agenda"])
+celery_app = Celery("creapar", broker=settings.redis_url, backend=settings.redis_url, include=["app.tasks", "app.tasks.numeros", "app.tasks.agenda", "app.tasks.buscas"])
 celery_app.conf.update(
     timezone=settings.timezone,
     enable_utc=True,
@@ -20,6 +20,10 @@ celery_app.conf.update(
         "conferir-conexoes": {
             "task": "numeros.conferir_conexoes",
             "schedule": settings.conferir_conexoes_segundos,
+        },
+        "conferir-buscas": {
+            "task": "buscas.conferir_andamento",
+            "schedule": 120,
         },
         "virada-do-dia": {
             "task": "numeros.virada_do_dia",

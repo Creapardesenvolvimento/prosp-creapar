@@ -19,13 +19,14 @@ os.environ.update(
     CHATWOOT_BASE_URL="https://chatwoot.test",
     CHATWOOT_TOKEN="cw-token",
     CHATWOOT_ACCOUNT_ID="1",
+    APIFY_TOKEN="apify-token",
 )
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.db import Base, SessionLocal, engine
-from app.integrations import chatwoot, evolution
+from app.integrations import apify, chatwoot, evolution
 from app.main import app
 from app.models import EvolutionServer, User
 from app.security import hash_password
@@ -63,6 +64,7 @@ class FakeEvolution:
         self.state = "connecting"
         self.owner_jid = "5511999990001@s.whatsapp.net"
         self.fail: dict[str, Exception] = {}
+        self.sem_whatsapp: set[str] = set()
 
     def _call(self, method, *args):
         self.calls.append((method, *args))
@@ -99,11 +101,55 @@ class FakeEvolution:
         self._call("send_text", name, number, text)
         return {"key": {"id": f"MSG{len(self.calls)}", "fromMe": True}}
 
+    def check_whatsapp(self, name, numbers):
+        self._call("check_whatsapp", name, list(numbers))
+        return {n: None if n in self.sem_whatsapp else f"{n}@s.whatsapp.net" for n in numbers}
+
     def logout(self, name):
         self._call("logout", name)
 
     def delete_instance(self, name):
         self._call("delete_instance", name)
+
+
+class FakeApify:
+    def __init__(self):
+        self.calls: list[tuple] = []
+        self.items: list[dict] = []
+        self.status = "RUNNING"
+        self.fail: Exception | None = None
+
+    def start_run(self, run_input, *, webhook_url, max_total_charge_usd):
+        self.calls.append(("start_run", run_input, webhook_url, max_total_charge_usd))
+        if self.fail:
+            raise self.fail
+        return {"id": f"run{len(self.calls)}", "defaultDatasetId": f"ds{len(self.calls)}", "status": "RUNNING"}
+
+    def get_run(self, run_id):
+        self.calls.append(("get_run", run_id))
+        return {"id": run_id, "status": self.status, "defaultDatasetId": "ds1"}
+
+    def dataset_items(self, dataset_id):
+        self.calls.append(("dataset_items", dataset_id))
+        return iter(self.items)
+
+
+@pytest.fixture(autouse=True)
+def apify_fake(monkeypatch):
+    fake = FakeApify()
+    monkeypatch.setattr(apify, "get_client", lambda: fake)
+    return fake
+
+
+@pytest.fixture
+def conectado(db, server, evo):
+    """Um número de WhatsApp conectado (usado para validar telefones e mandar avisos)."""
+    from app.services import numeros
+
+    numero, _ = numeros.criar_numero(db, "Chip conectado", server)
+    numeros.aplicar_estado(db, numero, "open")
+    db.commit()
+    return numero
 
 
 @pytest.fixture(autouse=True)

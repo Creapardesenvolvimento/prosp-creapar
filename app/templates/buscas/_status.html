@@ -1,0 +1,25 @@
+<div id="status-busca" {% if em_andamento %}hx-get="/buscas/{{ busca.id }}/status" hx-trigger="every 10s" hx-swap="outerHTML"{% endif %}>
+  <p>
+    <span class="status busca-{{ busca.status }}">{{ busca.status }}</span>
+    {% if busca.status == "pendente" %}<span class="muted">Enviando para o Apify…</span>
+    {% elif busca.status == "executando" %}<span class="muted">O Apify está coletando as empresas. Isso leva alguns minutos; esta página se atualiza sozinha.</span>
+    {% elif busca.status == "processando" %}<span class="muted">Filtrando celulares e conferindo quem tem WhatsApp…</span>
+    {% endif %}
+  </p>
+  {% if busca.erro %}<p class="erro">{{ busca.erro }}</p>{% endif %}
+
+  {% if busca.status == "concluida" %}
+  <div class="numeros-resumo">
+    <div><strong>{{ busca.total_encontrados }}</strong><small>empresas encontradas</small></div>
+    <div><strong>{{ busca.total_novos }}</strong><small>viraram lead</small></div>
+    <div><strong>{{ descartados }}</strong><small>descartadas</small></div>
+  </div>
+  {% if busca.descartes %}
+  <ul class="lista">
+    {% for motivo, total in busca.descartes|dictsort(by="value", reverse=true) %}
+    <li>{{ total }} — {{ motivos.get(motivo, motivo) }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% endif %}
+</div>

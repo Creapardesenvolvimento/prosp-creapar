@@ -97,6 +97,15 @@ class EvolutionClient:
         """number só com dígitos (5511999998888). O id da mensagem vem em ["key"]["id"]."""
         return self._request("POST", f"/message/sendText/{quote(instance_name)}", {"number": number, "text": text})
 
+    def check_whatsapp(self, instance_name: str, numbers: list[str]) -> dict[str, str | None]:
+        """Para cada número (só dígitos), o jid se ele tem WhatsApp, ou None se não tem."""
+        data = self._request("POST", f"/chat/whatsappNumbers/{quote(instance_name)}", {"numbers": numbers})
+        resultado: dict[str, str | None] = dict.fromkeys(numbers)
+        for item in data:
+            if item.get("number") in resultado:
+                resultado[item["number"]] = item.get("jid") if item.get("exists") else None
+        return resultado
+
     def logout(self, instance_name: str) -> dict:
         return self._request("DELETE", f"/instance/logout/{quote(instance_name)}")
 

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Busca: {{ busca.termo }}{% endblock %}
+{% block content %}
+<p><a href="/buscas">← Buscas</a></p>
+<h1>{{ busca.termo }} — {{ busca.cidade }}</h1>
+<p class="muted">Até {{ busca.limite }} empresas · teto de gasto no Apify: US$ {{ "%.2f"|format(custo_maximo) }}</p>
+{% if erro_acao %}<p class="erro">{{ erro_acao }}</p>{% endif %}
+
+<div class="card">
+  {% include "buscas/_status.html" %}
+  {% if busca.status == "erro" and busca.apify_dataset_id %}
+  <form method="post" action="/buscas/{{ busca.id }}/reprocessar"><button>Reprocessar resultados</button></form>
+  {% endif %}
+</div>
+
+{% if leads %}
+<h2 style="margin-top:24px">Leads desta busca</h2>
+<div class="tabela-wrap">
+<table>
+  <thead><tr><th>Empresa</th><th>WhatsApp</th><th>Categoria</th><th>Cidade</th><th>Nota</th><th>Site</th></tr></thead>
+  <tbody>
+    {% for l in leads %}
+    <tr>
+      <td>{{ l.nome }}</td>
+      <td>{{ l.telefone }}</td>
+      <td>{{ l.categoria or "—" }}</td>
+      <td>{{ l.cidade or "—" }}</td>
+      <td>{% if l.nota %}{{ l.nota }} ({{ l.avaliacoes or 0 }}){% else %}—{% endif %}</td>
+      <td>{% if l.site %}<a href="{{ l.site }}" target="_blank" rel="noopener noreferrer">abrir</a>{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if leads|length == 200 %}<p class="muted">Mostrando os 200 primeiros.</p>{% endif %}
+{% endif %}
+{% endblock %}

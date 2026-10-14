@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Buscas{% endblock %}
+{% block content %}
+<h1>Buscas no Google Maps</h1>
+
+{% if not apify_configurado %}
+<p class="alerta">O <code>APIFY_TOKEN</code> não está configurado no ambiente. As buscas vão falhar até ele ser preenchido.</p>
+{% endif %}
+
+<form method="post" action="/buscas" class="card form">
+  <h2>Nova busca</h2>
+  {% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+  <label>O que buscar
+    <input type="text" name="termo" value="{{ valores.termo }}" required maxlength="200" placeholder="clínica odontológica">
+  </label>
+  <label>Cidade
+    <input type="text" name="cidade" value="{{ valores.cidade }}" required maxlength="200" placeholder="Campinas, SP">
+  </label>
+  <label>Máximo de empresas
+    <input type="number" name="limite" value="{{ valores.limite }}" min="1" max="{{ limite_maximo }}" required
+           oninput="document.getElementById('custo').textContent = (this.value * {{ preco }}).toFixed(2)">
+    <small>Custo estimado no Apify: até US$ <span id="custo">{{ "%.2f"|format(valores.limite * preco) }}</span>
+      (US$ {{ preco }} por empresa encontrada). Só celulares com WhatsApp viram lead.</small>
+  </label>
+  <button type="submit">Buscar</button>
+</form>
+
+{% if buscas %}
+<h2 style="margin-top:24px">Buscas recentes</h2>
+<div class="tabela-wrap">
+<table>
+  <thead><tr><th>Busca</th><th>Status</th><th>Encontradas</th><th>Viraram lead</th><th>Quando</th></tr></thead>
+  <tbody>
+    {% for b in buscas %}
+    <tr>
+      <td><a href="/buscas/{{ b.id }}">{{ b.termo }} — {{ b.cidade }}</a></td>
+      <td><span class="status busca-{{ b.status }}">{{ b.status }}</span></td>
+      <td>{{ b.total_encontrados if b.status == "concluida" else "—" }}</td>
+      <td>{{ b.total_novos if b.status == "concluida" else "—" }}</td>
+      <td>{{ b.created_at.strftime("%d/%m %H:%M") if b.created_at else "" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

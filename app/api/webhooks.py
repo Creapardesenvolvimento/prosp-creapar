@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
-from app.models import WhatsappNumber
-from app.services import numeros
+from app.models import Busca, WhatsappNumber
+from app.services import buscas, numeros
 from app.services.idempotency import body_key, register_event
 
 logger = logging.getLogger(__name__)
@@ -43,11 +43,9 @@ def _normalize_event(name: str) -> str:
     return name.strip().lower().replace("_", ".")
 
 
-@router.post("/evolution/{token}")
-async def evolution_webhook(token: str, request: Request, db: Session = Depends(get_db)):
+async def _ler_payload(token: str, request: Request) -> tuple[bytes, dict]:
     if not hmac.compare_digest(token, get_settings().webhook_token):
         raise HTTPException(status_code=404)
-
     body = await request.body()
     try:
         payload = json.loads(body)
@@ -55,6 +53,12 @@ async def evolution_webhook(token: str, request: Request, db: Session = Depends(
         raise HTTPException(status_code=400, detail="JSON inválido")
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="JSON inválido")
+    return body, payload
+
+
+@router.post("/evolution/{token}")
+async def evolution_webhook(token: str, request: Request, db: Session = Depends(get_db)):
+    body, payload = await _ler_payload(token, request)
 
     event = _normalize_event(str(payload.get("event", "")))
     instance = payload.get("instance")
@@ -70,4 +74,28 @@ async def evolution_webhook(token: str, request: Request, db: Session = Depends(
         logger.info("webhook recebido", extra={"event": event, "instance": instance})
         handler(db, payload)
     db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/apify/{token}")
+async def apify_webhook(token: str, request: Request, db: Session = Depends(get_db)):
+    """Fim de um run do Apify. O polling de conferir_buscas cobre o caso de este aviso não chegar."""
+    from app.tasks.buscas import processar_busca
+
+    _, payload = await _ler_payload(token, request)
+    run = payload.get("resource") or {}
+    event = payload.get("eventType")
+    if not run.get("id") or not register_event(db, "apify", f"{run['id']}:{event}"):
+        return {"status": "duplicate"}
+
+    busca = db.scalar(select(Busca).where(Busca.apify_run_id == run["id"]))
+    if busca is None:
+        logger.warning("webhook do Apify de run desconhecido", extra={"run_id": run["id"]})
+        db.commit()
+        return {"status": "ok"}
+    logger.info("webhook do Apify recebido", extra={"busca_id": busca.id, "event": event, "status": run.get("status")})
+    processar = buscas.registrar_fim_do_run(db, busca, run)
+    db.commit()
+    if processar:
+        processar_busca.delay(busca.id)
     return {"status": "ok"}

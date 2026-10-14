@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     chatwoot_account_id: str = ""
 
     apify_token: str = ""
+    apify_actor_id: str = "compass~crawler-google-places"
+    apify_preco_por_lugar: float = 0.004  # US$ por empresa no plano Free; serve para estimar e limitar o custo
+    busca_limite_maximo: int = 500
     anthropic_api_key: str = ""
 
     # Agenda interna de vendedores
