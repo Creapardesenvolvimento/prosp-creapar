@@ -31,8 +31,11 @@ class Settings(BaseSettings):
     apify_token: str = ""
     anthropic_api_key: str = ""
 
-    google_client_id: str = ""
-    google_client_secret: str = ""
+    # Agenda interna de vendedores
+    reuniao_minutos: int = 30
+    reuniao_buffer_minutos: int = 15
+    agenda_antecedencia_horas: int = 2
+    agenda_dias_a_frente: int = 10
 
     @property
     def is_production(self) -> bool:

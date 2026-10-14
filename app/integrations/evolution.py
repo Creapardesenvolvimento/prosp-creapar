@@ -93,6 +93,10 @@ class EvolutionClient:
             },
         )
 
+    def send_text(self, instance_name: str, number: str, text: str) -> dict:
+        """number só com dígitos (5511999998888). O id da mensagem vem em ["key"]["id"]."""
+        return self._request("POST", f"/message/sendText/{quote(instance_name)}", {"number": number, "text": text})
+
     def logout(self, instance_name: str) -> dict:
         return self._request("DELETE", f"/instance/logout/{quote(instance_name)}")
 

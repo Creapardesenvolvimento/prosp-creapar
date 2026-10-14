@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Vendedores{% endblock %}
+{% block content %}
+<div class="titulo">
+  <h1>Vendedores</h1>
+  <a class="botao" href="/vendedores/novo">Adicionar vendedor</a>
+</div>
+
+{% if vendedores %}
+<div class="tabela-wrap">
+<table>
+  <thead><tr><th>Nome</th><th>WhatsApp</th><th>Atende</th><th>Link</th><th>Situação</th></tr></thead>
+  <tbody>
+    {% for v in vendedores %}
+    <tr>
+      <td><a href="/vendedores/{{ v.id }}">{{ v.nome }}</a></td>
+      <td>{{ v.telefone or "—" }}</td>
+      <td>
+        {% for dia in range(7) %}{% set f = faixas(v, dia) %}{% if f %}<div><small>{{ dias[dia] }}:</small> {{ f }}</div>{% endif %}{% endfor %}
+        {% if not v.horarios %}<span class="erro">sem horários</span>{% endif %}
+      </td>
+      <td>{{ "sim" if v.link_reuniao else "—" }}</td>
+      <td><span class="status {{ 'conectado' if v.ativo else '' }}">{{ "ativo" if v.ativo else "inativo" }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Nenhum vendedor cadastrado. Sem vendedores com horários, a agenda não tem horários livres.</p>
+{% endif %}
+{% endblock %}

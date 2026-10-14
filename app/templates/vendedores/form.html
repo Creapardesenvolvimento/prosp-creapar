@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ vendedor.nome if vendedor else "Novo vendedor" }}{% endblock %}
+{% block content %}
+<p><a href="/vendedores">← Vendedores</a></p>
+<h1>{{ vendedor.nome if vendedor else "Novo vendedor" }}</h1>
+{% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+
+<form method="post" action="{{ '/vendedores/%d' % vendedor.id if vendedor else '/vendedores' }}" class="card form">
+  <label>Nome <input type="text" name="nome" value="{{ v.nome }}" required maxlength="120"></label>
+  <label>WhatsApp
+    <input type="tel" name="telefone" value="{{ v.telefone }}" placeholder="(11) 99999-8888">
+    <small>Recebe o aviso de cada reunião nova.</small>
+  </label>
+  <label>E-mail <input type="email" name="email" value="{{ v.email }}"></label>
+  <label>Link da reunião
+    <input type="url" name="link_reuniao" value="{{ v.link_reuniao }}" placeholder="https://meet.google.com/...">
+    <small>Sala fixa (Meet, Zoom…). É enviada ao lead quando a reunião é marcada.</small>
+  </label>
+  <label class="check"><input type="checkbox" name="ativo" {{ "checked" if v.ativo }}> Ativo (entra na agenda)</label>
+
+  <fieldset>
+    <legend>Horários de atendimento</legend>
+    <small>Uma ou mais faixas por dia, separadas por vírgula. Ex.: <code>09:00-12:00, 14:00-18:00</code>. Em branco = não atende.</small>
+    {% for dia in range(7) %}
+    <label class="linha">{{ dias[dia] }}
+      <input type="text" name="faixas_{{ dia }}" value="{{ v.faixas.get(dia, '') }}" placeholder="09:00-18:00">
+    </label>
+    {% endfor %}
+  </fieldset>
+  <button type="submit">Salvar</button>
+</form>
+
+{% if vendedor %}
+<div class="card" id="bloqueios">
+  <h2>Bloqueios (folga, férias, compromisso)</h2>
+  {% if vendedor.bloqueios %}
+  <ul class="lista">
+    {% for b in vendedor.bloqueios %}
+    <li>
+      {{ local(b.inicio).strftime("%d/%m %H:%M") }} até {{ local(b.fim).strftime("%d/%m %H:%M") }}
+      {% if b.motivo %}<span class="muted">— {{ b.motivo }}</span>{% endif %}
+      <form method="post" action="/vendedores/{{ vendedor.id }}/bloqueios/{{ b.id }}/remover"><button class="link">remover</button></form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Nenhum bloqueio.</p>
+  {% endif %}
+  <form method="post" action="/vendedores/{{ vendedor.id }}/bloqueios" class="form">
+    <label>Início <input type="datetime-local" name="inicio" required></label>
+    <label>Fim <input type="datetime-local" name="fim" required></label>
+    <label>Motivo <input type="text" name="motivo" maxlength="200" placeholder="Férias"></label>
+    <button type="submit">Adicionar bloqueio</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

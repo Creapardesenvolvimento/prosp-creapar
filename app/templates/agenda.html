@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Agenda{% endblock %}
+{% block content %}
+<h1>Agenda</h1>
+{% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+
+<div class="titulo">
+  <h2>Reuniões</h2>
+  <form method="get" action="/agenda">
+    <select name="vendedor_id" onchange="this.form.submit()">
+      <option value="">Todos os vendedores</option>
+      {% for v in vendedores.values() %}
+      <option value="{{ v.id }}" {{ "selected" if vendedor_id == v.id }}>{{ v.nome }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+{% if reunioes %}
+<div class="tabela-wrap">
+<table>
+  <thead><tr><th>Quando</th><th>Lead</th><th>Vendedor</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+    {% for r in reunioes %}
+    <tr>
+      <td>{{ formatar(r.inicio) }}</td>
+      <td>{{ r.lead_nome }}{% if r.lead_telefone %}<br><small>{{ r.lead_telefone }}</small>{% endif %}</td>
+      <td>{{ r.vendedor.nome }}{% if r.status == "agendada" and r.vendedor.telefone %}<br><small>{{ "avisado" if r.vendedor_avisado_em else "aviso pendente" }}</small>{% endif %}</td>
+      <td><span class="status {{ 'conectado' if r.status == 'agendada' else '' }}">{{ r.status|replace("_", " ") }}</span></td>
+      <td>
+        {% if r.status == "agendada" %}
+        <div class="acoes">
+          <form method="post" action="/reunioes/{{ r.id }}/realizada"><button class="link">realizada</button></form>
+          <form method="post" action="/reunioes/{{ r.id }}/nao-compareceu"><button class="link">não compareceu</button></form>
+          <form method="post" action="/reunioes/{{ r.id }}/cancelar" onsubmit="return confirm('Cancelar esta reunião? O horário volta a ficar livre.')"><button class="link">cancelar</button></form>
+        </div>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Nenhuma reunião a partir de hoje.</p>
+{% endif %}
+
+<div class="card">
+  <h2>Horários livres</h2>
+  {% if livres %}
+  <p class="muted">A IA ofereceria agora: <strong>{{ sugestao }}</strong></p>
+  <form method="post" action="/agenda" class="form">
+    <label>Horário
+      <select name="inicio" required>
+        {% for h in livres %}
+        <option value="{{ h.inicio.isoformat() }}">{{ formatar(h.inicio) }} — {{ h.vendedores|length }} vendedor(es)</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Nome do lead / empresa <input type="text" name="lead_nome" required maxlength="200"></label>
+    <label>WhatsApp do lead <input type="tel" name="lead_telefone"></label>
+    <label>Observações <input type="text" name="observacoes"></label>
+    <button type="submit">Agendar manualmente</button>
+  </form>
+  {% else %}
+  <p class="muted">Nenhum horário livre. Cadastre <a href="/vendedores">vendedores</a> com horários de atendimento.</p>
+  {% endif %}
+</div>
+{% endblock %}

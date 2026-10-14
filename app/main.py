@@ -3,7 +3,7 @@ from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.api import auth, numeros, painel, webhooks
+from app.api import agenda, auth, numeros, painel, webhooks
 from app.api.deps import NotAuthenticated
 from app.config import get_settings
 from app.log import setup_logging
@@ -38,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(painel.router)
     app.include_router(numeros.router)
+    app.include_router(agenda.router)
     app.include_router(webhooks.router)
     return app
 

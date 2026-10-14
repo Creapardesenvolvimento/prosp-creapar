@@ -95,6 +95,10 @@ class FakeEvolution:
         self._call("set_chatwoot", name, kwargs)
         self.chatwoot.inboxes[kwargs["name_inbox"]] = 70 + len(self.chatwoot.inboxes)
 
+    def send_text(self, name, number, text):
+        self._call("send_text", name, number, text)
+        return {"key": {"id": f"MSG{len(self.calls)}", "fromMe": True}}
+
     def logout(self, name):
         self._call("logout", name)
 
