@@ -11,7 +11,7 @@ from app.db import get_db
 from app.models import Reuniao, ReuniaoStatus, User, Vendedor, VendedorBloqueio
 from app.services import agenda as svc
 from app.services.agenda import DIAS_SEMANA, AgendaError, como_utc
-from app.tasks.agenda import avisar_vendedor
+from app.tasks.agenda import avisar_cancelamento, avisar_vendedor
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -204,4 +204,6 @@ def acao_reuniao(reuniao_id: int, acao: str, db: Session = Depends(get_db)):
         db.rollback()
         return RedirectResponse(f"/agenda?erro={quote(str(exc))}", status_code=303)
     db.commit()
+    if reuniao.status == ReuniaoStatus.CANCELADA:
+        avisar_cancelamento.delay(reuniao.id)
     return RedirectResponse("/agenda", status_code=303)

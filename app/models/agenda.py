@@ -86,6 +86,7 @@ class Reuniao(Base):
     link: Mapped[str | None] = mapped_column(String(500))
     observacoes: Mapped[str] = mapped_column(Text, default="")
     vendedor_avisado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelamento_avisado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

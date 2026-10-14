@@ -344,23 +344,61 @@ def mensagem_aviso(reuniao: Reuniao) -> str:
     return "\n".join(linhas)
 
 
-def avisar_vendedor(db: Session, reuniao: Reuniao) -> str | None:
-    """Manda a reunião para o WhatsApp do vendedor por um número conectado. Retorna o id da mensagem."""
-    vendedor = reuniao.vendedor
-    if reuniao.vendedor_avisado_em is not None or not vendedor.telefone:
-        return None
+def mensagem_cancelamento(reuniao: Reuniao) -> str:
+    return "\n".join(
+        [
+            "❌ *Reunião cancelada*",
+            f"Lead: {reuniao.lead_nome}",
+            f"Era: {formatar_horario(reuniao.inicio)}",
+            "O horário voltou a ficar livre na agenda.",
+        ]
+    )
+
+
+def _enviar_ao_vendedor(db: Session, reuniao: Reuniao, texto: str, evento: str) -> str | None:
+    """Manda o texto ao WhatsApp do vendedor pelo número conectado com menos envios. Retorna o id da mensagem."""
     numeros = sorted(numeros_no_rodizio(db), key=lambda n: n.envios_hoje)
     if not numeros:
-        logger.warning("nenhum número conectado para avisar o vendedor", extra={"reuniao_id": reuniao.id})
+        logger.warning("nenhum número conectado para avisar o vendedor", extra={"reuniao_id": reuniao.id, "evento": evento})
         return None
     numero = numeros[0]
     resposta = evolution.get_client(numero.server).send_text(
-        numero.instance_name, para_evolution(vendedor.telefone), mensagem_aviso(reuniao)
+        numero.instance_name, para_evolution(reuniao.vendedor.telefone), texto
     )
-    reuniao.vendedor_avisado_em = datetime.now(timezone.utc)
     mensagem_id = (resposta.get("key") or {}).get("id")
     logger.info(
         "vendedor avisado",
-        extra={"reuniao_id": reuniao.id, "vendedor_id": vendedor.id, "numero_id": numero.id, "mensagem_id": mensagem_id},
+        extra={
+            "reuniao_id": reuniao.id,
+            "vendedor_id": reuniao.vendedor_id,
+            "evento": evento,
+            "numero_id": numero.id,
+            "mensagem_id": mensagem_id,
+        },
     )
+    return mensagem_id
+
+
+def avisar_vendedor(db: Session, reuniao: Reuniao) -> str | None:
+    """Avisa o vendedor da reunião nova (uma vez só)."""
+    if reuniao.vendedor_avisado_em is not None or not reuniao.vendedor.telefone:
+        return None
+    mensagem_id = _enviar_ao_vendedor(db, reuniao, mensagem_aviso(reuniao), "agendada")
+    if mensagem_id is not None:
+        reuniao.vendedor_avisado_em = datetime.now(timezone.utc)
+    return mensagem_id
+
+
+def avisar_cancelamento(db: Session, reuniao: Reuniao) -> str | None:
+    """Avisa o vendedor que a reunião caiu. Só se ele chegou a ser avisado do agendamento."""
+    if (
+        reuniao.status != ReuniaoStatus.CANCELADA
+        or reuniao.vendedor_avisado_em is None
+        or reuniao.cancelamento_avisado_em is not None
+        or not reuniao.vendedor.telefone
+    ):
+        return None
+    mensagem_id = _enviar_ao_vendedor(db, reuniao, mensagem_cancelamento(reuniao), "cancelada")
+    if mensagem_id is not None:
+        reuniao.cancelamento_avisado_em = datetime.now(timezone.utc)
     return mensagem_id

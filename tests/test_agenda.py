@@ -236,3 +236,37 @@ def test_avisar_vendedor_sem_numero_conectado(db, vendedores, evo):
     assert svc.avisar_vendedor(db, reuniao) is None
     assert reuniao.vendedor_avisado_em is None
     assert evo.called("send_text") == []
+
+
+def test_avisar_cancelamento(db, server, vendedores, evo):
+    from app.services import numeros
+
+    numero, _ = numeros.criar_numero(db, "Chip 1", server)
+    numeros.aplicar_estado(db, numero, "open")
+    db.commit()
+    vendedores("Ana", {0: "10:00-12:00"}, telefone="(11) 97777-6666")
+    reuniao = svc.agendar(db, sp(12, 10), lead_nome="Padaria X", agora=AGORA, regras=REGRAS)
+
+    assert svc.avisar_cancelamento(db, reuniao) is None  # ainda agendada
+    svc.avisar_vendedor(db, reuniao)
+    svc.mudar_status(db, reuniao, ReuniaoStatus.CANCELADA)
+
+    assert svc.avisar_cancelamento(db, reuniao) is not None
+    (*_, number, text) = evo.called("send_text")[-1]
+    assert number == "5511977776666"
+    assert "Reunião cancelada" in text and "Padaria X" in text and "segunda, 12/10 às 10:00" in text
+    assert svc.avisar_cancelamento(db, reuniao) is None  # não repete
+    assert len(evo.called("send_text")) == 2
+
+
+def test_cancelamento_sem_aviso_do_agendamento_nao_avisa(db, server, vendedores, evo):
+    from app.services import numeros
+
+    vendedores("Ana", {0: "10:00-12:00"}, telefone="(11) 97777-6666")
+    reuniao = svc.agendar(db, sp(12, 10), lead_nome="A", agora=AGORA, regras=REGRAS)
+    svc.avisar_vendedor(db, reuniao)  # sem número conectado: aviso fica pendente
+    numero, _ = numeros.criar_numero(db, "Chip 1", server)
+    numeros.aplicar_estado(db, numero, "open")
+    svc.mudar_status(db, reuniao, ReuniaoStatus.CANCELADA)
+    assert svc.avisar_cancelamento(db, reuniao) is None
+    assert evo.called("send_text") == []

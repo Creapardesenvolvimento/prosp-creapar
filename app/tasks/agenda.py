@@ -14,3 +14,14 @@ def avisar_vendedor(reuniao_id: int) -> str | None:
         mensagem_id = svc.avisar_vendedor(db, reuniao)
         db.commit()
         return mensagem_id
+
+
+@celery_app.task(name="agenda.avisar_cancelamento", autoretry_for=(EvolutionError,), retry_backoff=30, max_retries=5)
+def avisar_cancelamento(reuniao_id: int) -> str | None:
+    with SessionLocal() as db:
+        reuniao = db.get(Reuniao, reuniao_id)
+        if reuniao is None:
+            return None
+        mensagem_id = svc.avisar_cancelamento(db, reuniao)
+        db.commit()
+        return mensagem_id

@@ -25,7 +25,7 @@
       <td>{{ formatar(r.inicio) }}</td>
       <td>{{ r.lead_nome }}{% if r.lead_telefone %}<br><small>{{ r.lead_telefone }}</small>{% endif %}</td>
       <td>{{ r.vendedor.nome }}{% if r.status == "agendada" and r.vendedor.telefone %}<br><small>{{ "avisado" if r.vendedor_avisado_em else "aviso pendente" }}</small>{% endif %}</td>
-      <td><span class="status {{ 'conectado' if r.status == 'agendada' else '' }}">{{ r.status|replace("_", " ") }}</span></td>
+      <td><span class="status {{ 'conectado' if r.status == 'agendada' else '' }}">{{ r.status|replace("_", " ") }}</span>{% if r.status == "cancelada" and r.vendedor_avisado_em %}<br><small>{{ "vendedor avisado" if r.cancelamento_avisado_em else "aviso pendente" }}</small>{% endif %}</td>
       <td>
         {% if r.status == "agendada" %}
         <div class="acoes">
