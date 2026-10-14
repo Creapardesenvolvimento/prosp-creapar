@@ -93,9 +93,15 @@ class EvolutionClient:
             },
         )
 
-    def send_text(self, instance_name: str, number: str, text: str) -> dict:
-        """number só com dígitos (5511999998888). O id da mensagem vem em ["key"]["id"]."""
-        return self._request("POST", f"/message/sendText/{quote(instance_name)}", {"number": number, "text": text})
+    def send_text(self, instance_name: str, number: str, text: str, delay_ms: int = 0) -> dict:
+        """number só com dígitos (5511999998888). delay_ms mostra "digitando…" antes de enviar.
+
+        O id da mensagem vem em ["key"]["id"].
+        """
+        body = {"number": number, "text": text}
+        if delay_ms:
+            body["delay"] = delay_ms
+        return self._request("POST", f"/message/sendText/{quote(instance_name)}", body)
 
     def check_whatsapp(self, instance_name: str, numbers: list[str]) -> dict[str, str | None]:
         """Para cada número (só dígitos), o jid se ele tem WhatsApp, ou None se não tem."""

@@ -22,7 +22,9 @@ from app.services.rampa import limite_do_numero
 
 logger = logging.getLogger(__name__)
 
-WEBHOOK_EVENTS = ["CONNECTION_UPDATE", "MESSAGES_UPSERT"]
+WEBHOOK_EVENTS = ["CONNECTION_UPDATE", "MESSAGES_UPSERT", "SEND_MESSAGE"]
+# Suba quando WEBHOOK_EVENTS mudar: os números já cadastrados recebem o webhook novo na próxima conferência.
+WEBHOOK_VERSAO = 2
 LABEL_NUMERO_PERDIDO = "numero-perdido"
 
 # Status em que a instância ainda existe na Evolution e deve ser acompanhada.
@@ -118,6 +120,7 @@ def criar_numero(
         nome_exibicao=nome,
         instance_name=instance_name,
         status=NumeroStatus.AGUARDANDO_QR,
+        webhook_versao=WEBHOOK_VERSAO,
         substitui_numero_id=substitui.id if substitui else None,
     )
     db.add(numero)
@@ -297,6 +300,13 @@ def conferir_conexoes(db: Session) -> int:
         mudancas += aplicar_estado(db, numero, state)
         if numero.status in (NumeroStatus.CONECTADO, NumeroStatus.PAUSADO) and numero.chatwoot_inbox_id is None:
             configurar_chatwoot(db, numero)
+        if (numero.webhook_versao or 0) < WEBHOOK_VERSAO:
+            try:
+                evolution.get_client(numero.server).set_webhook(numero.instance_name, webhook_url(), WEBHOOK_EVENTS)
+                numero.webhook_versao = WEBHOOK_VERSAO
+                logger.info("webhook do número atualizado", extra={"numero_id": numero.id})
+            except EvolutionError as exc:
+                logger.error("falha ao atualizar webhook", extra={"numero_id": numero.id, "erro": str(exc)})
         db.commit()
     return mudancas
 

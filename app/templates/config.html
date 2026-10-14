@@ -22,6 +22,7 @@
     {% else %}
     <label>{{ campo.rotulo }}
       <input type="{{ 'time' if campo.tipo == 'hora' else ('number' if campo.tipo in ('inteiro', 'decimal') else 'text') }}"
+             {% if campo.tipo == "frase" %}maxlength="200"{% endif %}
              name="{{ campo.chave }}" value="{{ '%g'|format(v[campo.chave]) if campo.tipo == 'decimal' else v[campo.chave] }}" required
              {% if campo.tipo == "decimal" %}step="0.5"{% endif %}
              {% if campo.minimo is not none %}min="{{ campo.minimo }}"{% endif %}

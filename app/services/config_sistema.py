@@ -27,13 +27,17 @@ class Campo:
     chave: str
     grupo: str
     rotulo: str
-    tipo: str  # dias | hora | inteiro | decimal | rampa | texto
+    tipo: str  # dias | hora | inteiro | decimal | rampa | texto (sem espaços) | frase
     ajuda: str = ""
     minimo: float | None = None
     maximo: float | None = None
 
 
 CAMPOS = [
+    Campo("empresa_nome", "Empresa", "Empresa que a IA representa", "frase"),
+    Campo("atendente_nome", "Empresa", "Nome que a IA usa", "frase", "Entra no lugar de [Seu Nome] nos roteiros."),
+    Campo("economia_texto", "Empresa", "Economia que pode ser citada", "frase",
+          "Entra no lugar de \"até X%\" nos roteiros. Use só o que a empresa consegue sustentar."),
     Campo("disparo_dias", "Disparo", "Dias de disparo", "dias"),
     Campo("disparo_inicio", "Disparo", "Início do horário comercial", "hora"),
     Campo("disparo_fim", "Disparo", "Fim do horário comercial", "hora"),
@@ -52,6 +56,8 @@ CAMPOS = [
     Campo("agenda_dias_a_frente", "Agenda", "Oferecer horários até quantos dias à frente", "inteiro", "", 1, 60),
     Campo("ia_modelo", "Inteligência artificial", "Modelo", "texto",
           "Nome do modelo ou combo no OmniRouter (ex.: cc/claude-sonnet-5, auto/claude-sonnet)."),
+    Campo("ia_espera_segundos", "Inteligência artificial", "Esperar antes de responder (segundos)", "inteiro",
+          "Junta as mensagens que o lead manda em sequência numa resposta só.", 3, 120),
 ]
 CAMPOS_POR_CHAVE = {c.chave: c for c in CAMPOS}
 
@@ -72,6 +78,10 @@ def padroes() -> dict:
         "agenda_antecedencia_horas": s.agenda_antecedencia_horas,
         "agenda_dias_a_frente": s.agenda_dias_a_frente,
         "ia_modelo": s.ia_modelo,
+        "ia_espera_segundos": 20,
+        "empresa_nome": "Brafort10",
+        "atendente_nome": "Bruna",
+        "economia_texto": "até 50%",
     }
 
 
@@ -97,6 +107,10 @@ def _converter(campo: Campo, bruto) -> object:
         if hora > 23 or minuto > 59:
             raise ConfigError(f"{campo.rotulo}: horário inválido.")
         return f"{hora:02d}:{minuto:02d}"
+    if campo.tipo == "frase":
+        if not texto or len(texto) > 200:
+            raise ConfigError(f"{campo.rotulo}: informe um texto de até 200 caracteres.")
+        return texto
     if campo.tipo == "texto":
         if not texto or len(texto) > 200 or any(c.isspace() for c in texto):
             raise ConfigError(f"{campo.rotulo}: informe o nome, sem espaços.")

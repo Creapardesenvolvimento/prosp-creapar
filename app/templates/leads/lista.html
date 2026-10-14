@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Leads{% endblock %}
+{% block content %}
+<h1>Leads</h1>
+{% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+
+<details class="card" id="teste" style="margin-bottom:16px" {{ "open" if erro }}>
+  <summary><strong>Criar lead de teste</strong> <small class="muted">— para conversar com a Bruna pelo seu celular</small></summary>
+  {% if not numeros or not campanhas %}
+  <p class="muted">Precisa de um número conectado e de uma campanha com mensagem de abertura.</p>
+  {% else %}
+  <form method="post" action="/leads/teste" class="form" style="margin-top:12px">
+    <label>Seu celular (diferente do chip que envia)
+      <input type="tel" name="telefone" required placeholder="(11) 99999-8888">
+    </label>
+    <label>Nome da empresa fictícia <input type="text" name="nome" value="Pousada Teste" maxlength="200"></label>
+    <label>Categoria (como no Google Maps) <input type="text" name="categoria" value="Pousada" maxlength="200"></label>
+    <label>Cidade <input type="text" name="cidade" value="Angra dos Reis" maxlength="200"></label>
+    <label>Segmento
+      <select name="segmento"><option value="">a IA decide pela categoria</option>{% for s in segmentos %}<option>{{ s }}</option>{% endfor %}</select>
+    </label>
+    <label>Porte
+      <select name="porte"><option value="">a IA estima</option>{% for p in portes %}<option value="{{ p }}">{{ rotulo_porte[p] }}</option>{% endfor %}</select>
+    </label>
+    <label>Número que envia
+      <select name="numero_id">{% for n in numeros %}<option value="{{ n.id }}">{{ n.nome_exibicao }} ({{ n.telefone }})</option>{% endfor %}</select>
+    </label>
+    <label>Campanha (usa as mensagens de abertura dela)
+      <select name="campanha_id">{% for c in campanhas %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endfor %}</select>
+    </label>
+    <small>A abertura sai na hora. Responda pelo celular e acompanhe a conversa aqui. Criar de novo com o mesmo telefone recomeça do zero.</small>
+    <button type="submit">Criar e enviar abertura</button>
+  </form>
+  {% endif %}
+</details>
+<div class="acoes" style="margin-bottom:16px">
+  {% for chave, rotulo in [("conversa", "Em conversa"), ("humano", "Com humano"), ("reuniao", "Reunião agendada"), ("enviados", "Aguardando resposta"), ("encerrados", "Encerrados")] %}
+  <a class="{{ 'botao' if filtro == chave else '' }}" href="/leads?filtro={{ chave }}">{{ rotulo }} ({{ contagem[chave] }})</a>
+  {% endfor %}
+</div>
+
+{% if leads %}
+<div class="tabela-wrap">
+<table>
+  <thead><tr><th>Empresa</th><th>WhatsApp</th><th>Segmento</th><th>Porte</th><th>Etapa</th><th>Status</th></tr></thead>
+  <tbody>
+    {% for l in leads %}
+    <tr>
+      <td><a href="/leads/{{ l.id }}">{{ l.nome }}</a>{% if l.cidade %}<br><small>{{ l.cidade }}</small>{% endif %}</td>
+      <td>{{ l.telefone }}</td>
+      <td>{{ l.segmento or "—" }}</td>
+      <td>{{ l.porte or "—" }}</td>
+      <td>{{ l.etapa or "—" }}</td>
+      <td>{{ l.status|replace("_", " ") }}{% if not l.ia_ativa %}<br><small class="muted">IA desligada</small>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Nenhum lead aqui.</p>
+{% endif %}
+{% endblock %}

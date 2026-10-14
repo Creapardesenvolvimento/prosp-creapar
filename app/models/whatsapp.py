@@ -47,6 +47,7 @@ class WhatsappNumber(Base):
     # Disparo: quando este número pode mandar a próxima mensagem, e por que foi pausado.
     proximo_envio_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     motivo_pausa: Mapped[str | None] = mapped_column(String(200))
+    webhook_versao: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

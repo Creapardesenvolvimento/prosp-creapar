@@ -16,7 +16,10 @@ from sqlalchemy.orm import Session
 from app.integrations import evolution
 from app.integrations.evolution import EvolutionError
 from app.models import (
+    Autor,
     Blacklist,
+    Direcao,
+    Mensagem,
     Campanha,
     CampanhaMensagem,
     CampanhaStatus,
@@ -30,6 +33,7 @@ from app.models import (
 )
 from app.models.campanhas import campanha_numeros
 from app.services import campanhas, config_sistema
+from app.services.agente import marcar_como_do_sistema
 from app.services.agenda import como_utc, utc
 from app.services.config_sistema import RegrasDisparo
 from app.services.telefone import para_evolution
@@ -162,6 +166,11 @@ def enviar_abertura(db: Session, numero: WhatsappNumber, lead: Lead, agora: date
     envio.status = EnvioStatus.ENVIADO
     envio.enviado_em = agora
     envio.evolution_message_id = (resposta.get("key") or {}).get("id")
+    marcar_como_do_sistema(db, envio.evolution_message_id)
+    db.add(
+        Mensagem(lead_id=lead.id, numero_id=numero.id, direcao=Direcao.SAIDA, autor=Autor.SISTEMA,
+                 texto=envio.texto, evolution_message_id=envio.evolution_message_id)
+    )
     lead.status = LeadStatus.ENVIADO
     lead.enviado_em = agora
     numero.envios_hoje += 1

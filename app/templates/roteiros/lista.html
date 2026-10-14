@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Roteiros{% endblock %}
+{% block content %}
+<h1>Roteiros de prospecção</h1>
+<p class="muted">A IA escolhe o roteiro pelo segmento e pelo porte do lead e segue as etapas Atenção → Interesse → Desejo → Ação, uma por resposta.
+  <code>[Seu Nome]</code> e "até X%" são preenchidos com o que está em <a href="/config">Configurações</a>.</p>
+{% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+{% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
+
+<form method="post" action="/roteiros/importar" enctype="multipart/form-data" class="card form">
+  <h2>Importar do Word (.docx)</h2>
+  <small>Títulos "Segmento: Pousadas", subtítulos "1. Pequeno Porte (Foco: …)" e parágrafos "Atenção: …", "Interesse: …", "Desejo: …", "Ação: …".
+    Segmentos com o mesmo nome têm os textos substituídos; as palavras-chave editadas são mantidas.</small>
+  <input type="file" name="arquivo" accept=".docx" required>
+  <button type="submit">Importar</button>
+</form>
+
+{% if segmentos %}
+<div class="tabela-wrap" style="margin-top:16px">
+<table>
+  <thead><tr><th>Segmento</th><th>Textos</th><th>Reconhece pela categoria</th></tr></thead>
+  <tbody>
+    {% for s in segmentos %}
+    <tr>
+      <td><a href="/roteiros/{{ s.id }}">{{ s.nome }}</a></td>
+      <td>{{ s.roteiros|length }} / 12</td>
+      <td style="white-space:normal"><small>{{ s.palavras_chave }}</small></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Nenhum roteiro ainda. Importe o documento acima.</p>
+{% endif %}
+{% endblock %}

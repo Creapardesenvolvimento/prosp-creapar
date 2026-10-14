@@ -50,6 +50,9 @@ class FakeChatwoot:
     def active_conversations(self, inbox_id):
         return [c for c in self.conversations if c["inbox_id"] == inbox_id and c["status"] in ("open", "pending")]
 
+    def conversas_do_telefone(self, telefone, inbox_id):
+        return [c for c in self.conversations if c.get("telefone") == telefone and c["inbox_id"] == inbox_id]
+
     def add_label(self, conversation, label):
         if label in conversation["labels"]:
             return False
@@ -97,7 +100,7 @@ class FakeEvolution:
         self._call("set_chatwoot", name, kwargs)
         self.chatwoot.inboxes[kwargs["name_inbox"]] = 70 + len(self.chatwoot.inboxes)
 
-    def send_text(self, name, number, text):
+    def send_text(self, name, number, text, delay_ms=0):
         self._call("send_text", name, number, text)
         return {"key": {"id": f"MSG{len(self.calls)}", "fromMe": True}}
 

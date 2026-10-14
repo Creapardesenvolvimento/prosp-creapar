@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ lead.nome }}{% endblock %}
+{% block content %}
+<p><a href="/leads">← Leads</a></p>
+<div class="titulo">
+  <h1>{{ lead.nome }}</h1>
+  <span class="status">{{ lead.status|replace("_", " ") }}</span>
+  <div class="acoes">
+    {% if lead.ia_ativa %}
+    <form method="post" action="/leads/{{ lead.id }}/pausar-ia"><button class="perigo">Pausar IA neste lead</button></form>
+    {% elif lead.status not in ("opt_out",) %}
+    <form method="post" action="/leads/{{ lead.id }}/devolver-ia"><button>Devolver para a IA</button></form>
+    {% endif %}
+  </div>
+</div>
+{% if lead.handoff_motivo %}<div class="alerta">IA parada: {{ lead.handoff_motivo }}</div>{% endif %}
+
+<dl class="card dados">
+  <dt>WhatsApp</dt><dd>{{ lead.telefone }}</dd>
+  <dt>Categoria</dt><dd>{{ lead.categoria or "—" }}{% if lead.cidade %} · {{ lead.cidade }}{% endif %}</dd>
+  <dt>Segmento</dt><dd>{{ lead.segmento or "ainda não classificado" }}</dd>
+  <dt>Porte</dt><dd>{{ rotulo_porte.get(lead.porte, "ainda não classificado") }}</dd>
+  <dt>Próxima etapa</dt><dd>{{ rotulo_etapa.get(lead.etapa, "Atenção (aguardando a primeira resposta)") }}</dd>
+  <dt>Google</dt><dd>{% if lead.nota %}{{ lead.nota }} ({{ lead.avaliacoes or 0 }} avaliações){% else %}—{% endif %}{% if lead.site %} · <a href="{{ lead.site }}" target="_blank" rel="noopener noreferrer">site</a>{% endif %}</dd>
+</dl>
+
+<h2>Conversa</h2>
+<div class="conversa">
+  {% for m in historico %}
+  <div class="msg {{ m.direcao }} autor-{{ m.autor }}">
+    <small>{{ {"lead": lead.nome, "ia": "Bruna (IA)", "sistema": "Abertura", "humano": "Time"}.get(m.autor, m.autor) }} · {{ local(m.created_at).strftime("%d/%m %H:%M") if m.created_at else "" }}</small>
+    <div>{% if m.tipo != "texto" %}<em>[{{ m.tipo }}]</em> {% endif %}{{ m.texto }}</div>
+  </div>
+  {% else %}
+  <p class="muted">Sem mensagens ainda.</p>
+  {% endfor %}
+</div>
+{% endblock %}

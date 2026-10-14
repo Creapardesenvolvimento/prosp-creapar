@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Roteiro: {{ s.nome }}{% endblock %}
+{% block content %}
+<p><a href="/roteiros">← Roteiros</a></p>
+<h1>{{ s.nome }}</h1>
+{% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
+
+<form method="post" action="/roteiros/{{ s.id }}" class="form" style="max-width:820px">
+  <label>Palavras-chave da categoria do Google Maps (separadas por vírgula)
+    <textarea name="palavras_chave" rows="2">{{ s.palavras_chave }}</textarea>
+    <small>Se a categoria ou o termo da busca tiver uma delas, o lead cai neste segmento. Sem nenhuma, a IA decide.</small>
+  </label>
+  {% for porte in portes %}
+  <fieldset>
+    <legend>{{ rotulo_porte[porte] }}</legend>
+    <label>Foco <input type="text" name="foco_{{ porte }}" value="{{ focos.get(porte, '') }}" maxlength="200"></label>
+    {% for etapa in etapas %}
+    {% set r = textos.get((porte, etapa)) %}
+    <label>{{ rotulo_etapa[etapa] }}
+      <textarea name="texto_{{ porte }}_{{ etapa }}" rows="3">{{ r.texto if r else "" }}</textarea>
+    </label>
+    {% endfor %}
+  </fieldset>
+  {% endfor %}
+  <button type="submit">Salvar</button>
+</form>
+{% endblock %}

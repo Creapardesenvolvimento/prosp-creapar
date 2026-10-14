@@ -6,13 +6,13 @@ Nesta fase: marca que o lead respondeu e trata o pedido de opt-out.
 import logging
 import re
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Blacklist, Lead, LeadStatus
+from app.models import Autor, Blacklist, Direcao, Envio, Lead, LeadStatus, Mensagem
 
 logger = logging.getLogger(__name__)
 
@@ -89,24 +89,125 @@ def adicionar_blacklist(db: Session, telefone: str, motivo: str) -> bool:
     return True
 
 
+# messageType da Evolution -> tipo no histórico. Os ignorados não são conversa (reação, edição, apagou…).
+TIPOS = {
+    "conversation": "texto",
+    "extendedTextMessage": "texto",
+    "audioMessage": "audio",
+    "pttMessage": "audio",
+    "imageMessage": "imagem",
+    "videoMessage": "video",
+    "documentMessage": "documento",
+    "documentWithCaptionMessage": "documento",
+    "stickerMessage": "figurinha",
+    "locationMessage": "localizacao",
+    "contactMessage": "contato",
+}
+IGNORADOS = {"reactionMessage", "protocolMessage", "senderKeyDistributionMessage", "messageContextInfo", "editedMessage"}
+# A IA não entende estes: o lead vai para um humano.
+TIPOS_PARA_HUMANO = {"audio", "imagem", "video", "documento", "localizacao", "contato"}
+
+
+def tipo_da_mensagem(data: dict) -> str | None:
+    """Tipo legível, ou None quando o evento não é uma mensagem de conversa."""
+    tipo = data.get("messageType")
+    if tipo is None:
+        chaves = [k for k in (data.get("message") or {}) if k not in IGNORADOS]
+        tipo = chaves[0] if chaves else None
+    if tipo is None or tipo in IGNORADOS:
+        return None
+    return TIPOS.get(tipo, "outro")
+
+
 def registrar_recebida(db: Session, payload: dict) -> Lead | None:
-    """Mensagem que chegou de um contato. Retorna o lead, se for um."""
+    """Mensagem que chegou de um contato. Guarda no histórico e decide o que fazer. Retorna o lead, se for um.
+
+    Quando a IA deve responder, deixa `lead.responder_em` preenchido (quem chama agenda a resposta).
+    """
+    from app.services import agente, config_sistema
+
     data = payload.get("data") or {}
-    if (data.get("key") or {}).get("fromMe"):
-        return None  # mensagens nossas: tratadas na Fase 5 (detecção de humano)
+    key = data.get("key") or {}
+    if key.get("fromMe"):
+        return None  # ver registrar_propria
+    tipo = tipo_da_mensagem(data)
+    if tipo is None:
+        return None
     lead = encontrar_lead(db, data)
     if lead is None:
         return None
     agora = datetime.now(timezone.utc)
+    texto = extrair_texto(data) or ""
+    db.add(
+        Mensagem(lead_id=lead.id, numero_id=lead.numero_id, direcao=Direcao.ENTRADA, autor=Autor.LEAD,
+                 tipo=tipo, texto=texto, evolution_message_id=key.get("id"))
+    )
     if lead.respondeu_em is None:
         lead.respondeu_em = agora
     if lead.status == LeadStatus.ENVIADO:
         lead.status = LeadStatus.RESPONDEU
-    texto = extrair_texto(data)
+
     if lead.status != LeadStatus.OPT_OUT and eh_opt_out(texto):
         lead.status = LeadStatus.OPT_OUT
+        lead.ia_ativa = False
+        lead.responder_em = None
         adicionar_blacklist(db, lead.telefone, "opt-out: pediu para não ser contatado")
         logger.info("opt-out do lead", extra={"lead_id": lead.id})
-    else:
-        logger.info("lead respondeu", extra={"lead_id": lead.id, "status": lead.status})
+    elif not agente.pode_responder(lead):
+        logger.info("lead respondeu (IA desligada para ele)", extra={"lead_id": lead.id, "status": lead.status})
+    elif tipo in TIPOS_PARA_HUMANO:
+        agente.passar_para_humano(db, lead, f"o lead mandou {tipo}, que a IA não entende")
+    elif tipo == "texto":
+        espera = int(config_sistema.valores(db)["ia_espera_segundos"])
+        lead.responder_em = agora + timedelta(seconds=espera)
+        logger.info("lead respondeu; resposta da IA agendada", extra={"lead_id": lead.id, "em_segundos": espera})
+    return lead
+
+
+def registrar_propria(db: Session, payload: dict) -> dict | None:
+    """Mensagem enviada pelo nosso número. Se não foi o sistema, foi um humano (Chatwoot ou celular).
+
+    Retorna os dados para a conferência adiada (o webhook do nosso próprio envio pode chegar antes de
+    o id ficar gravado), ou None se já dá para ver que foi o sistema.
+    """
+    from app.services import agente
+
+    data = payload.get("data") or {}
+    key = data.get("key") or {}
+    if not key.get("fromMe") or not key.get("id") or tipo_da_mensagem(data) is None:
+        return None
+    if agente.eh_do_sistema(db, key["id"]):
+        return None
+    if encontrar_lead(db, data) is None:
+        return None  # conversa com quem não é lead (vendedor, grupo, contato pessoal)
+    return {"id": key["id"], "data": data}
+
+
+def confirmar_humano(db: Session, dados: dict) -> Lead | None:
+    """Conferência adiada de uma mensagem nossa desconhecida. Retorna o lead se um humano assumiu."""
+    from app.services import agente
+
+    message_id, data = dados["id"], dados["data"]
+    if agente.eh_do_sistema(db, message_id):
+        return None
+    lead = encontrar_lead(db, data)
+    if lead is None:
+        return None
+    texto = extrair_texto(data) or ""
+    # Um envio nosso que ainda não tinha o id gravado: mesmo lead, mesmo texto, há poucos minutos.
+    recente = datetime.now(timezone.utc) - timedelta(minutes=3)
+    nosso = db.scalar(
+        select(Envio).where(Envio.lead_id == lead.id, Envio.texto == texto, Envio.created_at >= recente).order_by(Envio.id.desc()).limit(1)
+    )
+    if nosso is not None and texto:
+        agente.marcar_como_do_sistema(db, message_id)
+        return None
+    db.add(
+        Mensagem(lead_id=lead.id, numero_id=lead.numero_id, direcao=Direcao.SAIDA, autor=Autor.HUMANO,
+                 tipo=tipo_da_mensagem(data) or "texto", texto=texto, evolution_message_id=message_id)
+    )
+    agente.marcar_como_do_sistema(db, message_id)  # não conferir de novo num reenvio do webhook
+    if agente.pode_responder(lead) or lead.status != LeadStatus.HUMANO_ASSUMIU:
+        agente.passar_para_humano(db, lead, "um humano respondeu pelo Chatwoot ou pelo celular")
+    logger.info("humano assumiu o lead", extra={"lead_id": lead.id})
     return lead

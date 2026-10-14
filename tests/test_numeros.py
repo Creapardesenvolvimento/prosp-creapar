@@ -46,7 +46,7 @@ def test_criar_numero(db, server, evo):
             "set_webhook",
             numero.instance_name,
             "https://painel.test/webhooks/evolution/test-webhook-token",
-            ["CONNECTION_UPDATE", "MESSAGES_UPSERT"],
+            ["CONNECTION_UPDATE", "MESSAGES_UPSERT", "SEND_MESSAGE"],
         )
     ]
     assert svc.numeros_no_rodizio(db) == []

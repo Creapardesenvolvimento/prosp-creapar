@@ -379,6 +379,10 @@ def _enviar_ao_vendedor(db: Session, reuniao: Reuniao, texto: str, evento: str) 
         numero.instance_name, para_evolution(reuniao.vendedor.telefone), texto
     )
     mensagem_id = (resposta.get("key") or {}).get("id")
+    if mensagem_id:
+        from app.services.idempotency import register_event
+
+        register_event(db, "envio-sistema", mensagem_id)
     logger.info(
         "vendedor avisado",
         extra={

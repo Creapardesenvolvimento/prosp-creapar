@@ -1,6 +1,7 @@
 import hmac
 import json
 import logging
+from datetime import datetime, timezone
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -39,12 +40,33 @@ def on_connection_update(db: Session, payload: dict) -> None:
 
 
 @evolution_handler("messages.upsert")
-def on_messages_upsert(db: Session, payload: dict) -> None:
+@evolution_handler("send.message")
+def on_message(db: Session, payload: dict):
+    """Mensagem recebida ou enviada pelo número. Retorna o que precisa rodar depois do commit."""
+    from app.tasks.agente import conferir_mensagem_propria, responder_lead
+
     key = (payload.get("data") or {}).get("key") or {}
     # A Evolution pode reenviar a mesma mensagem com corpo diferente; o id dela é a chave.
     if key.get("id") and not register_event(db, "evolution-msg", f"{payload.get('instance')}:{key['id']}"):
-        return
-    mensagens.registrar_recebida(db, payload)
+        return None
+    if key.get("fromMe"):
+        dados = mensagens.registrar_propria(db, payload)
+        if dados is None:
+            return None
+        return lambda: conferir_mensagem_propria.apply_async((dados,), countdown=15)
+    lead = mensagens.registrar_recebida(db, payload)
+    if lead is None:
+        return None
+    if lead.responder_em is not None:
+        espera = max((lead.responder_em - datetime.now(timezone.utc)).total_seconds(), 0)
+        lead_id = lead.id
+        return lambda: responder_lead.apply_async((lead_id,), countdown=espera + 1)
+    if not lead.ia_ativa and lead.handoff_motivo:
+        from app.tasks.agente import rotular_conversa
+
+        lead_id = lead.id
+        return lambda: rotular_conversa.delay(lead_id, "humano")
+    return None
 
 
 def _normalize_event(name: str) -> str:
@@ -81,8 +103,10 @@ async def evolution_webhook(token: str, request: Request, db: Session = Depends(
         logger.info("webhook sem handler", extra={"event": event, "instance": instance})
     else:
         logger.info("webhook recebido", extra={"event": event, "instance": instance})
-        handler(db, payload)
+        depois = handler(db, payload)
     db.commit()
+    if handler is not None and callable(depois):
+        depois()  # tarefas que dependem do que acabou de ser gravado
     return {"status": "ok"}
 
 

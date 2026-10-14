@@ -60,6 +60,18 @@ class ChatwootClient:
                     yield conversation
             page += 1
 
+    def conversas_do_telefone(self, telefone: str, inbox_id: int) -> list[dict]:
+        """Conversas do contato (pelo telefone E.164) numa caixa de entrada, da mais recente para a mais antiga."""
+        contatos = self._request("GET", "/contacts/search", params={"q": telefone.lstrip("+")})["payload"]
+        conversas = []
+        for contato in contatos:
+            if (contato.get("phone_number") or "").lstrip("+") != telefone.lstrip("+"):
+                continue
+            for conversa in self._request("GET", f"/contacts/{contato['id']}/conversations")["payload"]:
+                if conversa.get("inbox_id") == inbox_id:
+                    conversas.append(conversa)
+        return sorted(conversas, key=lambda c: c.get("last_activity_at") or c.get("id") or 0, reverse=True)
+
     def add_label(self, conversation: dict, label: str) -> bool:
         """Acrescenta a label preservando as existentes (o endpoint substitui a lista)."""
         labels = list(conversation.get("labels") or [])

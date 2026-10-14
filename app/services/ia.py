@@ -64,16 +64,20 @@ _FERRAMENTA_VARIACOES = {
     },
 }
 
-_SISTEMA_VARIACOES = """Você escreve a primeira mensagem de WhatsApp de uma prospecção B2B da Creapar, \
-agência de marketing digital de São Paulo, para pequenas e médias empresas.
+def _sistema_variacoes(db) -> str:
+    v = config_sistema.valores(db) if db is not None else config_sistema.padroes()
+    return f"""Você escreve a PRIMEIRA mensagem de WhatsApp de uma prospecção B2B: {v['atendente_nome']}, da {v['empresa_nome']}, chamando uma empresa pela primeira vez.
+
+Essa primeira mensagem é só uma saudação curta para abrir a conversa. A apresentação e a oferta vêm depois que a empresa responder,
+então NÃO fale de produto, preço, desconto nem da {v['empresa_nome']} além de, no máximo, o nome.
 
 Regras para cada mensagem:
-- Português do Brasil, tom humano e direto, como alguém real escrevendo do celular. Nada de linguagem de anúncio.
-- Curta: no máximo 3 frases e cerca de 300 caracteres.
-- Use o marcador {empresa} para o nome da empresa e, se fizer sentido, {cidade} para a cidade. Não use outros marcadores.
-- Termine com uma única pergunta simples que convide a responder.
-- Sem links, sem emojis em excesso (no máximo um), sem preços, sem prometer resultados garantidos.
-- As variações precisam ser realmente diferentes entre si na estrutura e nas palavras, não só sinônimos.
+- Português do Brasil, tom humano e cordial, como alguém real escrevendo do celular.
+- Bem curta: uma ou duas frases, até cerca de 120 caracteres.
+- Use o marcador {{empresa}} para o nome da empresa (e {{cidade}} se fizer sentido). Não use outros marcadores.
+- Termine com uma pergunta simples que dê vontade de responder (ex.: confirmar se fala com a empresa ou com o responsável).
+- Sem links, no máximo um emoji. Não use "bom dia"/"boa tarde" fixos: a mensagem pode sair em qualquer horário (use "Olá", "Oi", "Tudo bem?").
+- As variações precisam ser realmente diferentes entre si, não só sinônimos.
 
 Entregue as variações chamando a ferramenta registrar_variacoes."""
 
@@ -102,7 +106,7 @@ def gerar_variacoes(*, nicho: str, oferta: str, exemplos: list[str], quantidade:
     response = chamar(
         model=modelo(db),
         max_tokens=4000,
-        system=_SISTEMA_VARIACOES,
+        system=_sistema_variacoes(db),
         tools=[_FERRAMENTA_VARIACOES],
         messages=[{"role": "user", "content": "\n\n".join(pedido)}],
     )
