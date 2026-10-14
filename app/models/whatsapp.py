@@ -44,6 +44,9 @@ class WhatsappNumber(Base):
     substitui_numero_id: Mapped[int | None] = mapped_column(ForeignKey("whatsapp_numbers.id"))
     # statusReason do último "close" da Evolution (401 = sessão encerrada no aparelho, etc.)
     motivo_desconexao: Mapped[int | None] = mapped_column(Integer)
+    # Disparo: quando este número pode mandar a próxima mensagem, e por que foi pausado.
+    proximo_envio_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    motivo_pausa: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

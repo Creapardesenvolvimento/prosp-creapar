@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import get_settings
 from app.integrations import evolution
 from app.models import Reuniao, ReuniaoStatus, Vendedor, VendedorBloqueio, VendedorHorario
+from app.services import config_sistema
 from app.services.numeros import numeros_no_rodizio
 from app.services.telefone import normalizar_telefone, para_evolution
 
@@ -50,6 +51,18 @@ def regras_padrao() -> Regras:
         antecedencia=timedelta(hours=s.agenda_antecedencia_horas),
         dias_a_frente=s.agenda_dias_a_frente,
         tz=ZoneInfo(s.timezone),
+    )
+
+
+def regras_do_sistema(db: Session) -> Regras:
+    """Regras da agenda com os valores ajustados no painel (Configurações)."""
+    v = config_sistema.valores(db)
+    return Regras(
+        duracao=timedelta(minutes=int(v["reuniao_minutos"])),
+        buffer=timedelta(minutes=int(v["reuniao_buffer_minutos"])),
+        antecedencia=timedelta(hours=int(v["agenda_antecedencia_horas"])),
+        dias_a_frente=int(v["agenda_dias_a_frente"]),
+        tz=ZoneInfo(get_settings().timezone),
     )
 
 
@@ -157,7 +170,7 @@ def carregar_agendas(db: Session, inicio: datetime, fim: datetime) -> list[Agend
 
 
 def horarios_livres(db: Session, agora: datetime | None = None, regras: Regras | None = None) -> list[Horario]:
-    regras = regras or regras_padrao()
+    regras = regras or regras_do_sistema(db)
     agora = agora or datetime.now(timezone.utc)
     janela_fim = agora + timedelta(days=regras.dias_a_frente + 2)
     # A folga cobre reuniões que começam antes da janela mas cujo intervalo invade o primeiro horário.
@@ -197,7 +210,7 @@ def agendar(
     regras: Regras | None = None,
 ) -> Reuniao:
     """Reserva o horário para um vendedor livre. Levanta HorarioIndisponivel se ninguém puder."""
-    regras = regras or regras_padrao()
+    regras = regras or regras_do_sistema(db)
     inicio = como_utc(inicio)
     # Trava os vendedores (no Postgres) para duas reservas simultâneas não pegarem o mesmo horário.
     db.scalars(select(Vendedor.id).where(Vendedor.ativo).order_by(Vendedor.id).with_for_update()).all()

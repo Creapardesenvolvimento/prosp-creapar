@@ -13,6 +13,17 @@
   {% endif %}
 </div>
 
+{% if busca.status == "concluida" and not tem_empresas %}
+<div class="alerta" style="margin-top:16px">
+  Esta busca foi feita antes de o sistema guardar todas as empresas. Enquanto o Apify ainda tiver o resultado
+  (alguns dias), dá para trazer tudo para cá sem custo.
+  <form method="post" action="/buscas/{{ busca.id }}/recuperar" style="margin-top:8px"><button>Recuperar empresas do Apify</button></form>
+</div>
+{% elif busca.total_encontrados %}
+<p style="margin-top:16px"><a class="botao" href="/buscas/{{ busca.id }}/empresas.csv">Baixar planilha com todas as {{ busca.total_encontrados }} empresas</a>
+  <small class="muted">Inclui as descartadas (fixos, sem WhatsApp…) com o motivo.</small></p>
+{% endif %}
+
 {% if leads %}
 <h2 style="margin-top:24px">Leads desta busca</h2>
 <div class="tabela-wrap">
@@ -33,5 +44,27 @@
 </table>
 </div>
 {% if leads|length == 200 %}<p class="muted">Mostrando os 200 primeiros.</p>{% endif %}
+{% endif %}
+
+{% if descartadas %}
+<details style="margin-top:24px">
+  <summary>Empresas descartadas ({{ descartados }})</summary>
+  <div class="tabela-wrap">
+  <table>
+    <thead><tr><th>Empresa</th><th>Telefone</th><th>Motivo</th><th>Categoria</th><th>Site</th></tr></thead>
+    <tbody>
+      {% for e in descartadas %}
+      <tr>
+        <td>{{ e.nome }}</td>
+        <td>{{ e.telefone_original or "—" }}</td>
+        <td>{{ motivos.get(e.descarte, e.descarte) }}</td>
+        <td>{{ e.categoria or "—" }}</td>
+        <td>{% if e.site %}<a href="{{ e.site }}" target="_blank" rel="noopener noreferrer">abrir</a>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
 {% endif %}
 {% endblock %}

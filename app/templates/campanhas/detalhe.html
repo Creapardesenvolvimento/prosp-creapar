@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}{{ c.nome }}{% endblock %}
+{% block content %}
+<p><a href="/campanhas">← Campanhas</a></p>
+<div class="titulo">
+  <h1>{{ c.nome }}</h1>
+  <span class="status campanha-{{ c.status }}">{{ c.status }}</span>
+  <div class="acoes">
+    {% if c.status in ("rascunho", "pausada") %}
+    <form method="post" action="/campanhas/{{ c.id }}/ativar"><button>{{ "Retomar" if c.status == "pausada" else "Ativar" }}</button></form>
+    {% endif %}
+    {% if c.status == "ativa" %}
+    <form method="post" action="/campanhas/{{ c.id }}/pausar"><button>Pausar</button></form>
+    {% endif %}
+    {% if c.status != "encerrada" %}
+    <form method="post" action="/campanhas/{{ c.id }}/encerrar" onsubmit="return confirm('Encerrar a campanha? Os leads que ainda não receberam mensagem voltam a ficar disponíveis.')"><button class="perigo">Encerrar</button></form>
+    {% endif %}
+  </div>
+</div>
+{% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+{% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
+
+<div class="numeros-resumo card">
+  <div><strong>{{ m.na_fila }}</strong><small>na fila</small></div>
+  <div><strong>{{ m.enviados }}</strong><small>enviados ({{ m.enviados_24h }} nas últimas 24h)</small></div>
+  <div><strong>{{ m.respostas }}</strong><small>responderam</small></div>
+  <div><strong>{{ m.taxa_resposta }}%</strong><small>taxa de resposta</small></div>
+  <div><strong>{{ m.reunioes }}</strong><small>reuniões</small></div>
+  <div><strong>{{ m.opt_outs }}</strong><small>opt-outs</small></div>
+  {% if m.falhas %}<div><strong>{{ m.falhas }}</strong><small>falhas de envio</small></div>{% endif %}
+</div>
+
+<div class="card" id="mensagens">
+  <h2>Mensagens de abertura</h2>
+  <p class="muted">Cada envio sorteia uma variação. Use <code>{empresa}</code> e <code>{cidade}</code>. Quanto mais variações, menos textos iguais saem em massa.</p>
+  {% set ativas = c.mensagens|selectattr("ativa")|list %}
+  {% if ativas %}
+  <ul class="lista">
+    {% for msg in ativas %}
+    <li>
+      {{ msg.texto }} {% if msg.origem == "ia" %}<small class="muted">(IA)</small>{% endif %}
+      <form method="post" action="/campanhas/{{ c.id }}/mensagens/{{ msg.id }}/remover"><button class="link">remover</button></form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="erro">Nenhuma mensagem cadastrada.</p>
+  {% endif %}
+  <form method="post" action="/campanhas/{{ c.id }}/mensagens" class="form">
+    <label>Nova variação
+      <textarea name="texto" rows="3" required placeholder="Oi, tudo bem? Vi a {empresa} aqui no Google e fiquei curioso: vocês recebem muita reserva direta ou mais pelo Booking?"></textarea>
+    </label>
+    <button type="submit">Adicionar</button>
+  </form>
+  <form method="post" action="/campanhas/{{ c.id }}/mensagens/gerar" style="margin-top:12px" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Gerando…'">
+    <button type="submit">Gerar 10 variações com IA</button>
+    <small class="muted">Usa o nicho e a oferta da campanha.</small>
+  </form>
+</div>
+
+<div class="card" id="numeros">
+  <h2>Números que disparam</h2>
+  <form method="post" action="/campanhas/{{ c.id }}/numeros" class="form">
+    {% for n in numeros %}
+    <label class="check">
+      <input type="checkbox" name="numero_id" value="{{ n.id }}" {{ "checked" if n.id in selecionados }}>
+      {{ n.nome_exibicao }} <small class="muted">{{ n.telefone or "" }} · {{ n.status|replace("_", " ") }} · limite {{ n.limite_diario_atual }}/dia</small>
+    </label>
+    {% else %}
+    <p class="muted">Nenhum número cadastrado. <a href="/numeros">Adicionar número</a></p>
+    {% endfor %}
+    {% if numeros %}<button type="submit">Salvar números</button>{% endif %}
+  </form>
+</div>
+
+<div class="card" id="leads">
+  <h2>Adicionar leads</h2>
+  <p class="muted">Entram na fila os leads novos das buscas escolhidas que ainda não estão em nenhuma campanha.</p>
+  {% set com_leads = buscas|selectattr(1)|list %}
+  {% if com_leads %}
+  <form method="post" action="/campanhas/{{ c.id }}/leads" class="form">
+    {% for b, disponiveis in com_leads %}
+    <label class="check"><input type="checkbox" name="busca_id" value="{{ b.id }}"> {{ b.termo }} — {{ b.cidade }} <small class="muted">{{ disponiveis }} leads disponíveis</small></label>
+    {% endfor %}
+    <button type="submit">Pôr na fila</button>
+  </form>
+  {% else %}
+  <p class="muted">Nenhuma busca com leads disponíveis. <a href="/buscas">Fazer uma busca</a></p>
+  {% endif %}
+</div>
+
+<form method="post" action="/campanhas/{{ c.id }}" class="card form" id="dados">
+  <h2>Dados da campanha</h2>
+  {% set v = c %}
+  {% include "campanhas/_campos.html" %}
+  <button type="submit">Salvar</button>
+</form>
+{% endblock %}

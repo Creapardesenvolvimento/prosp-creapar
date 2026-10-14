@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Configurações{% endblock %}
+{% block content %}
+<h1>Configurações</h1>
+{% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+{% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
+
+<form method="post" action="/config" class="form" style="max-width:640px">
+  {% for grupo, campos in grupos.items() %}
+  <fieldset>
+    <legend>{{ grupo }}</legend>
+    {% for campo in campos %}
+    {% if campo.tipo == "dias" %}
+    <div>
+      <small>{{ campo.rotulo }}</small>
+      <div class="acoes">
+        {% for nome in dias %}
+        <label class="check"><input type="checkbox" name="{{ campo.chave }}" value="{{ loop.index0 }}" {{ "checked" if loop.index0 in v[campo.chave] }}> {{ nome }}</label>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <label>{{ campo.rotulo }}
+      <input type="{{ 'time' if campo.tipo == 'hora' else ('number' if campo.tipo in ('inteiro', 'decimal') else 'text') }}"
+             name="{{ campo.chave }}" value="{{ '%g'|format(v[campo.chave]) if campo.tipo == 'decimal' else v[campo.chave] }}" required
+             {% if campo.tipo == "decimal" %}step="0.5"{% endif %}
+             {% if campo.minimo is not none %}min="{{ campo.minimo }}"{% endif %}
+             {% if campo.maximo is not none %}max="{{ campo.maximo }}"{% endif %}>
+      <small>{% if campo.ajuda %}{{ campo.ajuda }} {% endif %}Padrão de fábrica: {{ '%g'|format(padrao[campo.chave]) if campo.tipo == 'decimal' else padrao[campo.chave] }}.</small>
+    </label>
+    {% endif %}
+    {% endfor %}
+  </fieldset>
+  {% endfor %}
+  <div class="acoes">
+    <button type="submit">Salvar</button>
+    <button type="submit" name="restaurar" value="1" class="perigo" formnovalidate
+            onclick="return confirm('Voltar todas as configurações para o padrão de fábrica?')">Restaurar padrões</button>
+  </div>
+</form>
+
+<p style="margin-top:24px"><a href="/blacklist">Blacklist (números que nunca recebem mensagem)</a></p>
+{% endblock %}

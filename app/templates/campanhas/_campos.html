@@ -1,0 +1,9 @@
+<label>Nome <input type="text" name="nome" value="{{ v.nome or '' }}" required maxlength="200" placeholder="Hotéis Costa Verde — outubro"></label>
+<label>Nicho <input type="text" name="nicho" value="{{ v.nicho or '' }}" maxlength="200" placeholder="hotéis e pousadas"></label>
+<label>Oferta / promessa
+  <textarea name="oferta" rows="3" placeholder="Mais reservas diretas pelo Instagram e Google, sem depender só do Booking">{{ v.oferta or '' }}</textarea>
+</label>
+<label>Instruções para o agente de IA
+  <textarea name="prompt_agente" rows="6" placeholder="Quem somos, o que oferecemos, como contornar as objeções mais comuns deste nicho…">{{ v.prompt_agente or '' }}</textarea>
+  <small>Usado na Fase 5, quando a IA passar a responder os leads desta campanha.</small>
+</label>

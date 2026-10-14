@@ -27,6 +27,9 @@ def processar_busca(busca_id: int) -> None:
             return  # outro gatilho (webhook ou polling) já pegou esta busca
         busca = db.get(Busca, busca_id)
         try:
+            # Guarda tudo antes de validar: se a validação falhar, os dados pagos ficam no banco.
+            svc.guardar_resultados(db, busca)
+            db.commit()
             svc.processar(db, busca)
             db.commit()
         except (BuscaError, ApifyError, EvolutionError) as exc:

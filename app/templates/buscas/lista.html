@@ -10,6 +10,16 @@
 <form method="post" action="/buscas" class="card form">
   <h2>Nova busca</h2>
   {% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+  {% if parecidas %}
+  <div class="alerta">
+    <strong>Você já fez essa busca recentemente:</strong>
+    {% for b in parecidas %}
+    <a href="/buscas/{{ b.id }}">{{ b.termo }} — {{ b.cidade }}</a> <small class="muted">({{ b.created_at.strftime("%d/%m") if b.created_at else "" }}, {{ b.total_encontrados }} empresas)</small>{% if not loop.last %}, {% endif %}
+    {% endfor %}
+    <p>O Apify cobra de novo e devolve quase as mesmas empresas. Os dados da busca anterior estão guardados e podem ser baixados em planilha.</p>
+    <label class="check"><input type="checkbox" name="confirmar" value="1"> Buscar mesmo assim</label>
+  </div>
+  {% endif %}
   <label>O que buscar
     <input type="text" name="termo" value="{{ valores.termo }}" required maxlength="200" placeholder="clínica odontológica">
   </label>

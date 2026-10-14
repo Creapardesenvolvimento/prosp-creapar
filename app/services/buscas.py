@@ -6,15 +6,15 @@ As funções alteram a sessão mas não fazem commit, exceto `reivindicar_proces
 import logging
 import time
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.integrations import apify, evolution
-from app.models import Blacklist, Busca, BuscaStatus, Lead, LeadStatus, NumeroStatus, User, WhatsappNumber
+from app.models import Blacklist, Busca, BuscaStatus, Empresa, Lead, LeadStatus, NumeroStatus, User, WhatsappNumber
 from app.services.telefone import eh_celular, normalizar_telefone, para_evolution
 
 logger = logging.getLogger(__name__)
@@ -156,67 +156,120 @@ def _texto(item: dict, chave: str, tamanho: int) -> str | None:
     return str(valor)[:tamanho] if valor else None
 
 
-def processar(db: Session, busca: Busca, pausa_entre_lotes: float = 1.0) -> None:
-    """Lê o resultado do Apify, filtra, valida WhatsApp e cria os leads. A busca precisa estar em processando."""
+def _empresa_do_item(busca: Busca, item: dict) -> Empresa:
+    original = item.get("phoneUnformatted") or item.get("phone")
+    telefone = normalizar_telefone(original)
+    return Empresa(
+        busca_id=busca.id,
+        place_id=_texto(item, "placeId", 200),
+        nome=(item.get("title") or "Sem nome")[:300],
+        telefone_original=str(original)[:50] if original else None,
+        telefone=telefone,
+        celular=eh_celular(telefone),
+        site=_texto(item, "website", 500),
+        categoria=_texto(item, "categoryName", 200),
+        endereco=_texto(item, "address", 500),
+        bairro=_texto(item, "neighborhood", 200),
+        cidade=_texto(item, "city", 200),
+        estado=_texto(item, "state", 100),
+        nota=item.get("totalScore"),
+        avaliacoes=item.get("reviewsCount"),
+        url_maps=_texto(item, "url", 1000),
+        dados=item,
+    )
+
+
+def guardar_resultados(db: Session, busca: Busca) -> int:
+    """Copia para o banco todas as empresas que o Apify devolveu (o dataset de lá expira em poucos dias).
+
+    Se já estiverem guardadas, não baixa de novo. Retorna quantas empresas a busca tem.
+    """
+    existentes = db.scalar(select(func.count()).select_from(Empresa).where(Empresa.busca_id == busca.id))
+    if existentes:
+        return existentes
     if not busca.apify_dataset_id:
         raise BuscaError("O run do Apify não informou o dataset de resultados.")
-    itens = list(apify.get_client().dataset_items(busca.apify_dataset_id))
+    vistos: set[str] = set()
+    total = 0
+    for item in apify.get_client().dataset_items(busca.apify_dataset_id):
+        empresa = _empresa_do_item(busca, item)
+        if empresa.place_id:
+            if empresa.place_id in vistos:
+                continue
+            vistos.add(empresa.place_id)
+        db.add(empresa)
+        total += 1
+    db.flush()
+    logger.info("resultados do Apify guardados", extra={"busca_id": busca.id, "empresas": total})
+    return total
+
+
+def processar(db: Session, busca: Busca, pausa_entre_lotes: float = 1.0) -> None:
+    """Filtra as empresas guardadas, valida WhatsApp e cria os leads. A busca precisa estar em processando."""
+    guardar_resultados(db, busca)
+    empresas = db.scalars(select(Empresa).where(Empresa.busca_id == busca.id).order_by(Empresa.id)).all()
     descartes: Counter[str] = Counter()
-    candidatos: dict[str, dict] = {}
-    for item in itens:
-        if item.get("permanentlyClosed"):
-            descartes["fechado"] += 1
-            continue
-        telefone = normalizar_telefone(item.get("phoneUnformatted") or item.get("phone"))
-        if telefone is None:
-            descartes["sem_telefone"] += 1
-        elif not eh_celular(telefone):
-            descartes["nao_celular"] += 1
-        elif telefone in candidatos:
-            descartes["repetido_na_busca"] += 1
+    candidatos: dict[str, Empresa] = {}
+
+    def descartar(empresa: Empresa, motivo: str) -> None:
+        empresa.descarte = motivo
+        descartes[motivo] += 1
+
+    for empresa in empresas:
+        empresa.descarte, empresa.lead_id = None, None  # reprocessamento recomeça do zero
+        if empresa.dados.get("permanentlyClosed"):
+            descartar(empresa, "fechado")
+        elif empresa.telefone is None:
+            descartar(empresa, "sem_telefone")
+        elif not empresa.celular:
+            descartar(empresa, "nao_celular")
+        elif empresa.telefone in candidatos:
+            descartar(empresa, "repetido_na_busca")
         else:
-            candidatos[telefone] = item
+            candidatos[empresa.telefone] = empresa
 
     if candidatos:
-        ja_leads = set(db.scalars(select(Lead.telefone).where(Lead.telefone.in_(candidatos))))
+        ja_leads = dict(db.execute(select(Lead.telefone, Lead.id).where(Lead.telefone.in_(candidatos))).all())
         bloqueados = set(db.scalars(select(Blacklist.telefone).where(Blacklist.telefone.in_(candidatos))))
-        for telefone in list(candidatos):
+        for telefone, empresa in list(candidatos.items()):
             if telefone in bloqueados:
-                descartes["blacklist"] += 1
+                descartar(empresa, "blacklist")
                 del candidatos[telefone]
             elif telefone in ja_leads:
-                descartes["ja_era_lead"] += 1
+                descartar(empresa, "ja_era_lead")
+                empresa.lead_id = ja_leads[telefone]
                 del candidatos[telefone]
 
     jids = validar_whatsapp(db, list(candidatos), pausa_entre_lotes) if candidatos else {}
     novos = 0
-    for telefone, item in candidatos.items():
+    for telefone, empresa in candidatos.items():
         if not jids.get(telefone):
-            descartes["sem_whatsapp"] += 1
+            descartar(empresa, "sem_whatsapp")
             continue
         lead = Lead(
             busca_id=busca.id,
-            nome=(item.get("title") or "Sem nome")[:300],
+            nome=empresa.nome,
             telefone=telefone,
             whatsapp_jid=jids[telefone],
-            site=_texto(item, "website", 500),
-            categoria=_texto(item, "categoryName", 200),
-            endereco=_texto(item, "address", 500),
-            cidade=_texto(item, "city", 200) or busca.cidade,
-            nota=item.get("totalScore"),
-            avaliacoes=item.get("reviewsCount"),
-            place_id=_texto(item, "placeId", 200),
+            site=empresa.site,
+            categoria=empresa.categoria,
+            endereco=empresa.endereco,
+            cidade=empresa.cidade or busca.cidade,
+            nota=empresa.nota,
+            avaliacoes=empresa.avaliacoes,
+            place_id=empresa.place_id,
             status=LeadStatus.NOVO,
         )
         try:
             with db.begin_nested():  # outra busca pode ter criado o mesmo telefone agora há pouco
                 db.add(lead)
         except IntegrityError:
-            descartes["ja_era_lead"] += 1
+            descartar(empresa, "ja_era_lead")
             continue
+        empresa.lead_id = lead.id
         novos += 1
 
-    busca.total_encontrados = len(itens)
+    busca.total_encontrados = len(empresas)
     busca.total_novos = novos
     busca.descartes = dict(descartes)
     busca.status = BuscaStatus.CONCLUIDA
@@ -224,7 +277,63 @@ def processar(db: Session, busca: Busca, pausa_entre_lotes: float = 1.0) -> None
     busca.finished_at = datetime.now(timezone.utc)
     logger.info(
         "busca concluída",
-        extra={"busca_id": busca.id, "encontrados": len(itens), "novos": novos, "descartes": dict(descartes)},
+        extra={"busca_id": busca.id, "encontrados": len(empresas), "novos": novos, "descartes": dict(descartes)},
+    )
+
+
+def recuperar_empresas(db: Session, busca: Busca) -> int:
+    """Para buscas feitas antes de as empresas serem guardadas: baixa do Apify (ler não custa nada)
+    e marca cada empresa sem revalidar WhatsApp nem criar leads de novo."""
+    if busca.status != BuscaStatus.CONCLUIDA:
+        raise BuscaError("Só dá para recuperar uma busca concluída.")
+    if db.scalar(select(func.count()).select_from(Empresa).where(Empresa.busca_id == busca.id)):
+        raise BuscaError("As empresas desta busca já estão guardadas.")
+    try:
+        total = guardar_resultados(db, busca)
+    except apify.ApifyError as exc:
+        raise BuscaError(f"O Apify não devolveu mais os resultados (eles expiram depois de alguns dias): {exc}") from exc
+    leads_da_busca = dict(db.execute(select(Lead.telefone, Lead.id).where(Lead.busca_id == busca.id)).all())
+    outros_leads = dict(db.execute(select(Lead.telefone, Lead.id).where(Lead.busca_id != busca.id)).all())
+    bloqueados = set(db.scalars(select(Blacklist.telefone)))
+    vistos: set[str] = set()
+    for empresa in db.scalars(select(Empresa).where(Empresa.busca_id == busca.id).order_by(Empresa.id)):
+        if empresa.telefone in leads_da_busca and empresa.telefone not in vistos:
+            empresa.lead_id = leads_da_busca[empresa.telefone]
+        elif empresa.dados.get("permanentlyClosed"):
+            empresa.descarte = "fechado"
+        elif empresa.telefone is None:
+            empresa.descarte = "sem_telefone"
+        elif not empresa.celular:
+            empresa.descarte = "nao_celular"
+        elif empresa.telefone in vistos:
+            empresa.descarte = "repetido_na_busca"
+        elif empresa.telefone in bloqueados:
+            empresa.descarte = "blacklist"
+        elif empresa.telefone in outros_leads:
+            empresa.descarte, empresa.lead_id = "ja_era_lead", outros_leads[empresa.telefone]
+        else:
+            empresa.descarte = "sem_whatsapp"  # era celular e não virou lead
+        if empresa.telefone:
+            vistos.add(empresa.telefone)
+    db.flush()
+    logger.info("empresas de busca antiga recuperadas", extra={"busca_id": busca.id, "empresas": total})
+    return total
+
+
+def buscas_parecidas(db: Session, termo: str, cidade: str, dias: int = 90) -> list[Busca]:
+    """Buscas recentes com o mesmo termo e cidade, para não pagar duas vezes pela mesma lista."""
+    desde = datetime.now(timezone.utc) - timedelta(days=dias)
+    return list(
+        db.scalars(
+            select(Busca)
+            .where(
+                func.lower(Busca.termo) == termo.strip().lower(),
+                func.lower(Busca.cidade) == cidade.strip().lower(),
+                Busca.status.in_([BuscaStatus.CONCLUIDA, BuscaStatus.EXECUTANDO, BuscaStatus.PROCESSANDO]),
+                Busca.created_at >= desde,
+            )
+            .order_by(Busca.created_at.desc())
+        )
     )
 
 
@@ -236,8 +345,9 @@ def marcar_erro(db: Session, busca: Busca, erro: str) -> None:
 
 
 def preparar_reprocessamento(db: Session, busca: Busca) -> None:
-    """Volta uma busca com erro para a fila de processamento (os resultados ficam no Apify por alguns dias)."""
-    if busca.status != BuscaStatus.ERRO or not busca.apify_dataset_id:
+    """Volta uma busca com erro para a fila de processamento, usando os resultados já guardados."""
+    guardadas = db.scalar(select(func.count()).select_from(Empresa).where(Empresa.busca_id == busca.id))
+    if busca.status != BuscaStatus.ERRO or not (busca.apify_dataset_id or guardadas):
         raise BuscaError("Só dá para reprocessar uma busca com erro que já tenha resultados no Apify.")
     busca.status = BuscaStatus.EXECUTANDO
     busca.erro = None

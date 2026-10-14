@@ -67,6 +67,12 @@ class Lead(Base):
     email: Mapped[str | None] = mapped_column(String(255))
     place_id: Mapped[str | None] = mapped_column(String(200))
     status: Mapped[str] = mapped_column(String(20), default=LeadStatus.NOVO, index=True)
+    campanha_id: Mapped[int | None] = mapped_column(ForeignKey("campanhas.id"), index=True)
+    # Número que mandou a primeira mensagem. Depois de preenchido, só ele fala com o lead.
+    numero_id: Mapped[int | None] = mapped_column(ForeignKey("whatsapp_numbers.id"), index=True)
+    tentativas_envio: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    enviado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    respondeu_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

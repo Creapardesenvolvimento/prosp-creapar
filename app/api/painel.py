@@ -14,5 +14,5 @@ def dashboard(request: Request, db: Session = Depends(get_db), user: User = Depe
     return templates.TemplateResponse(
         request,
         "dashboard.html",
-        {"user": user, "alertas": svc.numeros_com_alerta(db), "no_rodizio": len(svc.numeros_no_rodizio(db))},
+        {"user": user, "alertas": svc.numeros_com_alerta(db), "pausados_auto": svc.numeros_pausados_automaticamente(db), "no_rodizio": len(svc.numeros_no_rodizio(db))},
     )

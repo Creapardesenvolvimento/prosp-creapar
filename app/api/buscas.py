@@ -1,14 +1,17 @@
+import csv
+import io
+import re
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_user, templates
 from app.config import get_settings
 from app.db import get_db
-from app.models import Busca, BuscaStatus, Lead, User
+from app.models import Busca, BuscaStatus, Empresa, Lead, User
 from app.services import buscas as svc
 from app.services.buscas import MOTIVOS_DESCARTE, BuscaError
 from app.tasks.buscas import iniciar_busca, processar_busca
@@ -34,6 +37,7 @@ def _contexto_form(db: Session, user: User, **extra) -> dict:
         "apify_configurado": bool(settings.apify_token),
         "erro": None,
         "valores": {"termo": "", "cidade": "", "limite": 100},
+        "parecidas": [],
         **extra,
     }
 
@@ -49,14 +53,20 @@ def criar(
     termo: str = Form(""),
     cidade: str = Form(""),
     limite: int = Form(100),
+    confirmar: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
+    valores = {"termo": termo, "cidade": cidade, "limite": limite}
+    parecidas = svc.buscas_parecidas(db, termo, cidade) if termo.strip() and cidade.strip() else []
+    if parecidas and not confirmar:
+        contexto = _contexto_form(db, user, valores=valores, parecidas=parecidas)
+        return templates.TemplateResponse(request, "buscas/lista.html", contexto, status_code=409)
     try:
         busca = svc.criar_busca(db, termo, cidade, limite, user)
     except BuscaError as exc:
         db.rollback()
-        contexto = _contexto_form(db, user, erro=str(exc), valores={"termo": termo, "cidade": cidade, "limite": limite})
+        contexto = _contexto_form(db, user, erro=str(exc), valores=valores)
         return templates.TemplateResponse(request, "buscas/lista.html", contexto, status_code=400)
     db.commit()
     iniciar_busca.delay(busca.id)
@@ -65,9 +75,16 @@ def criar(
 
 def _contexto_detalhe(db: Session, busca: Busca) -> dict:
     leads = db.scalars(select(Lead).where(Lead.busca_id == busca.id).order_by(Lead.id).limit(200)).all()
+    descartadas = db.scalars(
+        select(Empresa).where(Empresa.busca_id == busca.id, Empresa.descarte.is_not(None)).order_by(Empresa.id).limit(300)
+    ).all()
     return {
         "busca": busca,
         "leads": leads,
+        "descartadas": descartadas,
+        "tem_empresas": bool(
+            db.scalar(select(Empresa.id).where(Empresa.busca_id == busca.id).limit(1))
+        ),
         "motivos": MOTIVOS_DESCARTE,
         "descartados": sum((busca.descartes or {}).values()),
         "em_andamento": busca.status in EM_ANDAMENTO,
@@ -102,3 +119,70 @@ def reprocessar(busca_id: int, db: Session = Depends(get_db)):
     db.commit()
     processar_busca.delay(busca.id)
     return RedirectResponse(f"/buscas/{busca.id}", status_code=303)
+
+
+@router.post("/buscas/{busca_id}/recuperar")
+def recuperar(busca_id: int, db: Session = Depends(get_db)):
+    busca = _busca(db, busca_id)
+    try:
+        svc.recuperar_empresas(db, busca)
+    except BuscaError as exc:
+        db.rollback()
+        return RedirectResponse(f"/buscas/{busca.id}?erro={quote(str(exc))}", status_code=303)
+    db.commit()
+    return RedirectResponse(f"/buscas/{busca.id}", status_code=303)
+
+
+COLUNAS_CSV = [
+    ("Empresa", "nome"),
+    ("Telefone", "telefone_original"),
+    ("Telefone (padronizado)", "telefone"),
+    ("Celular", "celular"),
+    ("Situação", None),
+    ("Categoria", "categoria"),
+    ("Site", "site"),
+    ("Endereço", "endereco"),
+    ("Bairro", "bairro"),
+    ("Cidade", "cidade"),
+    ("Estado", "estado"),
+    ("Nota", "nota"),
+    ("Avaliações", "avaliacoes"),
+    ("Google Maps", "url_maps"),
+]
+
+
+def _celula(valor):
+    """Texto que começa com = + - @ vira fórmula no Excel; o apóstrofo força texto (e mantém o +55 do telefone)."""
+    if isinstance(valor, str) and valor[:1] in ("=", "+", "-", "@"):
+        return "'" + valor
+    return valor
+
+
+@router.get("/buscas/{busca_id}/empresas.csv")
+def exportar(busca_id: int, db: Session = Depends(get_db)):
+    """Todas as empresas da busca (as que viraram lead e as descartadas), em planilha para o Excel."""
+    busca = _busca(db, busca_id)
+    empresas = db.scalars(select(Empresa).where(Empresa.busca_id == busca.id).order_by(Empresa.id)).all()
+    saida = io.StringIO()
+    writer = csv.writer(saida, delimiter=";")  # ";" e BOM: o Excel em português abre direto
+    writer.writerow([titulo for titulo, _ in COLUNAS_CSV])
+    for e in empresas:
+        situacao = "virou lead" if e.descarte is None and e.lead_id else MOTIVOS_DESCARTE.get(e.descarte, e.descarte or "")
+        linha = []
+        for _, campo in COLUNAS_CSV:
+            if campo is None:
+                linha.append(situacao)
+            elif campo == "celular":
+                linha.append("sim" if e.celular else "não")
+            elif campo == "nota" and e.nota is not None:
+                linha.append(str(e.nota).replace(".", ","))
+            else:
+                valor = getattr(e, campo)
+                linha.append("" if valor is None else _celula(valor))
+        writer.writerow(linha)
+    nome = re.sub(r"[^a-z0-9]+", "-", f"{busca.termo}-{busca.cidade}".lower()).strip("-") or "busca"
+    return Response(
+        "\ufeff" + saida.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{nome}-{busca.id}.csv"'},
+    )

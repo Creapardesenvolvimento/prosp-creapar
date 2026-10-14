@@ -24,6 +24,10 @@
 </div>
 {% endif %}
 
+{% if numero.status == "pausado" and numero.motivo_pausa and numero.motivo_pausa != "manual" %}
+<div class="alerta">Pausado automaticamente: {{ numero.motivo_pausa }}. Revise as mensagens da campanha antes de retomar.</div>
+{% endif %}
+
 <dl class="card dados">
   <dt>Telefone</dt><dd>{{ numero.telefone or "—" }}</dd>
   <dt>Instância</dt><dd><code>{{ numero.instance_name }}</code></dd>

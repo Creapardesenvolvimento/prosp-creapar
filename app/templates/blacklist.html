@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Blacklist{% endblock %}
+{% block content %}
+<p><a href="/config">← Configurações</a></p>
+<h1>Blacklist</h1>
+<p class="muted">{{ total }} número(s). Quem está aqui nunca recebe mensagem e não entra em buscas novas. Entram aqui sozinhos os leads que pedem para sair.</p>
+{% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+
+<form method="post" action="/blacklist" class="card form">
+  <label>Telefone <input type="tel" name="telefone" required placeholder="(11) 99999-8888"></label>
+  <label>Motivo <input type="text" name="motivo" maxlength="200" placeholder="pediu por telefone"></label>
+  <button type="submit">Adicionar</button>
+</form>
+
+{% if itens %}
+<div class="tabela-wrap" style="margin-top:16px">
+<table>
+  <thead><tr><th>Telefone</th><th>Motivo</th><th>Desde</th></tr></thead>
+  <tbody>
+    {% for b in itens %}
+    <tr><td>{{ b.telefone }}</td><td>{{ b.motivo }}</td><td>{{ b.created_at.strftime("%d/%m/%Y") if b.created_at else "" }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

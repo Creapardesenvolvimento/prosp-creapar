@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import get_db
 from app.models import Busca, WhatsappNumber
-from app.services import buscas, numeros
+from app.services import buscas, mensagens, numeros
 from app.services.idempotency import body_key, register_event
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,15 @@ def on_connection_update(db: Session, payload: dict) -> None:
         return
     data = payload.get("data") or {}
     numeros.aplicar_estado(db, numero, data.get("state"), data.get("statusReason"))
+
+
+@evolution_handler("messages.upsert")
+def on_messages_upsert(db: Session, payload: dict) -> None:
+    key = (payload.get("data") or {}).get("key") or {}
+    # A Evolution pode reenviar a mesma mensagem com corpo diferente; o id dela é a chave.
+    if key.get("id") and not register_event(db, "evolution-msg", f"{payload.get('instance')}:{key['id']}"):
+        return
+    mensagens.registrar_recebida(db, payload)
 
 
 def _normalize_event(name: str) -> str:

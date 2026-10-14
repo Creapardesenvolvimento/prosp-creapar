@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     apify_preco_por_lugar: float = 0.004  # US$ por empresa no plano Free; serve para estimar e limitar o custo
     busca_limite_maximo: int = 500
     anthropic_api_key: str = ""
+    ia_modelo: str = "claude-opus-5-5"
 
     # Agenda interna de vendedores
     reuniao_minutos: int = 30

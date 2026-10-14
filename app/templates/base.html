@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Prospecção{% endblock %} · Creapar</title>
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v={{ static_v }}">
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
 <body>
@@ -15,9 +15,11 @@
       <a href="/">Início</a>
       <a href="/numeros">Números</a>
       <a href="/buscas">Buscas</a>
+      <a href="/campanhas">Campanhas</a>
       <a href="/agenda">Agenda</a>
       <a href="/vendedores">Vendedores</a>
       <a href="/servidores">Servidores</a>
+      <a href="/config">Configurações</a>
     </nav>
     <form method="post" action="/logout">
       <span>{{ user.nome }}</span>

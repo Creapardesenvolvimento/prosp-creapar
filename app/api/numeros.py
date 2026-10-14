@@ -45,6 +45,7 @@ def lista(request: Request, db: Session = Depends(get_db), user: User = Depends(
             "numeros": [n for n in numeros if n.status != NumeroStatus.REMOVIDO],
             "removidos": [n for n in numeros if n.status == NumeroStatus.REMOVIDO],
             "alertas": svc.numeros_com_alerta(db),
+            "pausados_auto": svc.numeros_pausados_automaticamente(db),
             "dia_de_rampa": _dia_de_rampa,
         },
     )

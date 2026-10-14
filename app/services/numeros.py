@@ -17,6 +17,7 @@ from app.integrations import chatwoot, evolution
 from app.integrations.chatwoot import ChatwootError
 from app.integrations.evolution import EvolutionError
 from app.models import EvolutionServer, NumeroStatus, WhatsappNumber
+from app.services import config_sistema
 from app.services.rampa import limite_do_numero
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,18 @@ def numeros_no_rodizio(db: Session) -> list[WhatsappNumber]:
 
 def numeros_com_alerta(db: Session) -> list[WhatsappNumber]:
     return list(db.scalars(select(WhatsappNumber).where(WhatsappNumber.status == NumeroStatus.DESCONECTADO)))
+
+
+def numeros_pausados_automaticamente(db: Session) -> list[WhatsappNumber]:
+    return list(
+        db.scalars(
+            select(WhatsappNumber).where(
+                WhatsappNumber.status == NumeroStatus.PAUSADO,
+                WhatsappNumber.motivo_pausa.is_not(None),
+                WhatsappNumber.motivo_pausa != "manual",
+            )
+        )
+    )
 
 
 def criar_numero(
@@ -159,7 +172,7 @@ def _ao_conectar(db: Session, numero: WhatsappNumber) -> None:
         # Chip novo (ou outro chip lido na reconexão): a rampa começa do dia 1.
         numero.data_ativacao = datetime.now(timezone.utc)
         numero.envios_hoje = 0
-    numero.limite_diario_atual = limite_do_numero(numero.data_ativacao)
+    numero.limite_diario_atual = limite_do_numero(numero.data_ativacao, rampa=config_sistema.rampa(db))
     numero.status = NumeroStatus.CONECTADO
     numero.motivo_desconexao = None
     logger.info(
@@ -203,6 +216,7 @@ def pausar(db: Session, numero: WhatsappNumber) -> None:
     if numero.status != NumeroStatus.CONECTADO:
         raise NumeroError("Só é possível pausar um número conectado.")
     numero.status = NumeroStatus.PAUSADO
+    numero.motivo_pausa = "manual"
     logger.info("número pausado", extra={"numero_id": numero.id})
 
 
@@ -211,6 +225,7 @@ def retomar(db: Session, numero: WhatsappNumber) -> None:
         raise NumeroError("Este número não está pausado.")
     state = evolution.get_client(numero.server).connection_state(numero.instance_name)
     numero.status = NumeroStatus.CONECTADO if state == "open" else NumeroStatus.DESCONECTADO
+    numero.motivo_pausa = None
     logger.info("número retomado", extra={"numero_id": numero.id, "status": numero.status})
 
 
@@ -289,7 +304,8 @@ def conferir_conexoes(db: Session) -> int:
 def virada_do_dia(db: Session) -> None:
     """Zera os envios do dia e recalcula o limite de cada número pela rampa."""
     agora = datetime.now(timezone.utc)
+    rampa = config_sistema.rampa(db)
     for numero in db.scalars(select(WhatsappNumber).where(WhatsappNumber.status.in_(MONITORADOS))):
         numero.envios_hoje = 0
-        numero.limite_diario_atual = limite_do_numero(numero.data_ativacao, agora)
+        numero.limite_diario_atual = limite_do_numero(numero.data_ativacao, agora, rampa)
     logger.info("virada do dia: limites recalculados")

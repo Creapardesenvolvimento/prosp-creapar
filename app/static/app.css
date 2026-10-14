@@ -21,13 +21,14 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
 
 .topbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 24px;
+  gap: 8px 24px;
   padding: 12px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
-.topbar nav { flex: 1; display: flex; gap: 16px; }
+.topbar nav { flex: 1; display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .topbar form { display: flex; align-items: center; gap: 12px; margin: 0; }
 
 a { color: var(--accent); text-decoration: none; }
@@ -131,3 +132,10 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--text); 
 .numeros-resumo { display: flex; flex-wrap: wrap; gap: 24px; margin: 12px 0; }
 .numeros-resumo div { display: grid; }
 .numeros-resumo strong { font-size: 24px; }
+
+.ok { color: #17663a; }
+textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; resize: vertical; }
+.status.campanha-ativa { background: #dcf5e3; color: #17663a; }
+.status.campanha-pausada { background: #fff1cc; color: #7a5a00; }
+.status.campanha-rascunho { background: #e3edff; color: #1b4fb3; }
+.numeros-resumo.card { margin-bottom: 16px; }

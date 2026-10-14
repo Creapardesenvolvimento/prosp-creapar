@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Campanhas{% endblock %}
+{% block content %}
+<div class="titulo">
+  <h1>Campanhas</h1>
+  <a class="botao" href="/campanhas/nova">Nova campanha</a>
+</div>
+
+{% if campanhas %}
+<div class="tabela-wrap">
+<table>
+  <thead><tr><th>Campanha</th><th>Status</th><th>Na fila</th><th>Enviados</th><th>Respostas</th><th>Taxa</th><th>Reuniões</th><th>Opt-outs</th></tr></thead>
+  <tbody>
+    {% for c, m in campanhas %}
+    <tr>
+      <td><a href="/campanhas/{{ c.id }}">{{ c.nome }}</a>{% if c.nicho %}<br><small>{{ c.nicho }}</small>{% endif %}</td>
+      <td><span class="status campanha-{{ c.status }}">{{ c.status }}</span></td>
+      <td>{{ m.na_fila }}</td>
+      <td>{{ m.enviados }}</td>
+      <td>{{ m.respostas }}</td>
+      <td>{{ m.taxa_resposta }}%</td>
+      <td>{{ m.reunioes }}</td>
+      <td>{{ m.opt_outs }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Nenhuma campanha ainda.</p>
+{% endif %}
+{% endblock %}

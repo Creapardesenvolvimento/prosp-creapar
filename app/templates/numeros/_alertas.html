@@ -6,3 +6,11 @@
   {% endfor %}
 </div>
 {% endif %}
+{% if pausados_auto %}
+<div class="alerta">
+  <strong>{{ pausados_auto|length }} número(s) pausado(s) automaticamente:</strong>
+  {% for n in pausados_auto %}
+  <a href="/numeros/{{ n.id }}">{{ n.nome_exibicao }}</a> <span class="muted">({{ n.motivo_pausa }})</span>{% if not loop.last %}, {% endif %}
+  {% endfor %}
+</div>
+{% endif %}

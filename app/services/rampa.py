@@ -38,10 +38,11 @@ def dia_de_rampa(data_ativacao: datetime, agora: datetime, tz: str) -> int:
     return (local_date(agora) - local_date(data_ativacao)).days + 1
 
 
-def limite_do_numero(data_ativacao: datetime | None, agora: datetime | None = None) -> int:
+def limite_do_numero(data_ativacao: datetime | None, agora: datetime | None = None, rampa: Rampa | None = None) -> int:
+    """Sem rampa informada, usa a do .env (a do painel é passada por quem tem acesso ao banco)."""
     if data_ativacao is None:
         return 0
     settings = get_settings()
     agora = agora or datetime.now(timezone.utc)
     dia = dia_de_rampa(data_ativacao, agora, settings.timezone)
-    return limite_para_dia(dia, parse_rampa(settings.rampa_limites))
+    return limite_para_dia(dia, rampa or parse_rampa(settings.rampa_limites))
