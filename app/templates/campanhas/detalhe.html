@@ -20,6 +20,8 @@
 {% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
 {% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
 
+{% include "campanhas/_progresso.html" %}
+
 <div class="numeros-resumo card">
   <div><strong>{{ m.na_fila }}</strong><small>na fila</small></div>
   <div><strong>{{ m.enviados }}</strong><small>enviados ({{ m.enviados_24h }} nas últimas 24h)</small></div>

@@ -164,3 +164,66 @@ def test_blacklist_pelo_painel(logged_client, busca):
 def test_telas_exigem_login(client):
     for path in ("/campanhas", "/campanhas/nova", "/campanhas/1", "/config", "/blacklist"):
         assert client.get(path).headers["location"] == "/login"
+
+
+# --- barra de progresso -------------------------------------------------------------
+
+
+def _leads_com_status(db, campanha, *status):
+    for i, st in enumerate(status):
+        db.add(Lead(nome=f"L{i}", telefone=f"+55199{i:08d}", status=st, campanha_id=campanha.id))
+    db.commit()
+
+
+def test_progresso_por_fase(db, campanha, conectado):
+    campanhas_svc = svc
+    campanhas_svc.definir_numeros(db, campanha, [conectado.id])
+    conectado.limite_diario_atual, conectado.envios_hoje = 10, 4
+    _leads_com_status(
+        db, campanha,
+        LeadStatus.NA_FILA, LeadStatus.NA_FILA, LeadStatus.NA_FILA, LeadStatus.ENVIADO, LeadStatus.EM_CONVERSA,
+        LeadStatus.RESPONDEU, LeadStatus.REUNIAO_AGENDADA, LeadStatus.HUMANO_ASSUMIU, LeadStatus.OPT_OUT, LeadStatus.SEM_INTERESSE,
+    )
+    p = svc.progresso(db, campanha)
+    assert (p["total"], p["contatados"], p["na_fila"], p["pct_contatados"]) == (10, 7, 3, 70)
+    assert {f["chave"]: f["quantidade"] for f in p["fases"]} == {
+        "reuniao": 1, "conversa": 2, "humano": 1, "aguardando": 1, "encerrado": 2, "fila": 3,
+    }
+    assert sum(f["pct"] for f in p["fases"]) == 100
+    assert (p["por_dia"], p["restante_hoje"], p["dias_restantes"], p["concluida"]) == (10, 6, 0, False)  # 3 cabem hoje
+
+
+def test_previsao_de_dias(db, campanha, conectado):
+    svc.definir_numeros(db, campanha, [conectado.id])
+    conectado.limite_diario_atual, conectado.envios_hoje = 10, 10
+    _leads_com_status(db, campanha, *[LeadStatus.NA_FILA] * 25)
+    assert svc.progresso(db, campanha)["dias_restantes"] == 3  # nada mais hoje; 10 + 10 + 5
+
+
+def test_fila_concluida_e_campanha_vazia(db, campanha, conectado):
+    assert svc.progresso(db, campanha)["vazia"] is True
+    _leads_com_status(db, campanha, LeadStatus.ENVIADO, LeadStatus.EM_CONVERSA)
+    p = svc.progresso(db, campanha)
+    assert p["concluida"] is True and p["dias_restantes"] is None
+
+
+def test_progresso_nas_telas(logged_client, db, campanha, conectado):
+    svc.definir_numeros(db, campanha, [conectado.id])
+    campanha.status = CampanhaStatus.ATIVA
+    db.commit()
+    assert "Nenhum lead nesta campanha ainda" in logged_client.get(f"/campanhas/{campanha.id}").text
+    _leads_com_status(db, campanha, LeadStatus.NA_FILA, LeadStatus.ENVIADO)
+
+    pagina = logged_client.get(f"/campanhas/{campanha.id}")
+    assert "1 de 2 contatados (50%)" in pagina.text and f'hx-get="/campanhas/{campanha.id}/progresso"' in pagina.text
+    parcial = logged_client.get(f"/campanhas/{campanha.id}/progresso")
+    assert parcial.status_code == 200 and "Progresso da prospecção" in parcial.text
+    assert "1/2" in logged_client.get("/campanhas").text
+    assert "1 de 2 contatados" in logged_client.get("/").text  # painel inicial mostra as campanhas ativas
+
+    with SessionLocal() as s:
+        lead = s.scalar(select(Lead).where(Lead.status == LeadStatus.NA_FILA))
+        lead.status = LeadStatus.ENVIADO
+        s.commit()
+    pagina = logged_client.get(f"/campanhas/{campanha.id}/progresso")
+    assert "Fila concluída" in pagina.text and "Adicionar mais leads" in pagina.text

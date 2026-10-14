@@ -48,7 +48,9 @@ def _voltar(campanha_id: int, erro: str | None = None, ancora: str = "") -> Redi
 def lista(request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
     lista = db.scalars(select(Campanha).order_by(Campanha.created_at.desc())).all()
     return templates.TemplateResponse(
-        request, "campanhas/lista.html", {"user": user, "campanhas": [(c, svc.metricas(db, c)) for c in lista]}
+        request,
+        "campanhas/lista.html",
+        {"user": user, "campanhas": [(c, svc.metricas(db, c), svc.progresso(db, c)) for c in lista]},
     )
 
 
@@ -93,12 +95,23 @@ def detalhe(campanha_id: int, request: Request, erro: str | None = None, ok: str
             "user": user,
             "c": campanha,
             "m": svc.metricas(db, campanha),
+            "p": svc.progresso(db, campanha),
+            "atualizar": True,
             "numeros": numeros,
             "selecionados": {n.id for n in campanha.numeros},
             "buscas": [(b, disponiveis.get(b.id, 0)) for b in buscas],
             "erro": erro,
             "ok": ok,
         },
+    )
+
+
+@router.get("/campanhas/{campanha_id}/progresso")
+def progresso(campanha_id: int, request: Request, db: Session = Depends(get_db)):
+    """Parcial atualizada pelo HTMX enquanto a página da campanha está aberta."""
+    campanha = _campanha(db, campanha_id)
+    return templates.TemplateResponse(
+        request, "campanhas/_progresso.html", {"c": campanha, "p": svc.progresso(db, campanha), "atualizar": True}
     )
 
 

@@ -1,0 +1,40 @@
+<div class="card progresso" id="progresso-{{ c.id }}"
+     {% if atualizar %}hx-get="/campanhas/{{ c.id }}/progresso" hx-trigger="every 30s" hx-swap="outerHTML"{% endif %}>
+  {% if p.vazia %}
+  <p class="muted">Nenhum lead nesta campanha ainda. <a href="/campanhas/{{ c.id }}#leads">Pôr leads na fila</a></p>
+  {% else %}
+  <div class="titulo" style="margin-bottom:8px">
+    <h2 style="margin:0;flex:1">Progresso da prospecção</h2>
+    <strong>{{ p.contatados }} de {{ p.total }} contatados ({{ p.pct_contatados }}%)</strong>
+  </div>
+  <div class="barra" role="img" aria-label="{{ p.contatados }} de {{ p.total }} leads contatados">
+    {% for f in p.fases if f.quantidade %}
+    <span class="fase-{{ f.chave }}" style="width:{{ f.pct }}%" title="{{ f.rotulo }}: {{ f.quantidade }}"></span>
+    {% endfor %}
+  </div>
+  <ul class="legenda">
+    {% for f in p.fases %}
+    <li><i class="fase-{{ f.chave }}"></i>{{ f.rotulo }} <strong>{{ f.quantidade }}</strong></li>
+    {% endfor %}
+  </ul>
+
+  {% if p.concluida %}
+  <div class="concluida">
+    <strong>Fila concluída:</strong> todos os {{ p.total }} leads já receberam a primeira mensagem.
+    A Bruna continua as conversas em andamento.
+    <a class="botao" href="/campanhas/{{ c.id }}#leads">Adicionar mais leads</a>
+    <a href="/buscas">ou fazer uma busca nova</a>
+  </div>
+  {% elif p.sem_numero %}
+  <p class="erro">Nenhum número conectado nesta campanha: a fila está parada.</p>
+  {% elif c.status != "ativa" %}
+  <p class="muted">Campanha {{ c.status }}: a fila só anda com a campanha ativa.</p>
+  {% else %}
+  <p class="muted">
+    {{ p.na_fila }} na fila · os números da campanha mandam até {{ p.por_dia }} por dia ({{ p.restante_hoje }} ainda hoje).
+    {% if p.dias_restantes == 0 %}Previsão: a fila termina hoje.
+    {% elif p.dias_restantes %}Previsão: mais {{ p.dias_restantes }} dia(s) útil(eis) depois de hoje.{% endif %}
+  </p>
+  {% endif %}
+  {% endif %}
+</div>

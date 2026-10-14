@@ -9,12 +9,21 @@
 {% if campanhas %}
 <div class="tabela-wrap">
 <table>
-  <thead><tr><th>Campanha</th><th>Status</th><th>Na fila</th><th>Enviados</th><th>Respostas</th><th>Taxa</th><th>Reuniões</th><th>Opt-outs</th></tr></thead>
+  <thead><tr><th>Campanha</th><th>Status</th><th>Progresso</th><th>Na fila</th><th>Enviados</th><th>Respostas</th><th>Taxa</th><th>Reuniões</th><th>Opt-outs</th></tr></thead>
   <tbody>
-    {% for c, m in campanhas %}
+    {% for c, m, p in campanhas %}
     <tr>
       <td><a href="/campanhas/{{ c.id }}">{{ c.nome }}</a>{% if c.nicho %}<br><small>{{ c.nicho }}</small>{% endif %}</td>
       <td><span class="status campanha-{{ c.status }}">{{ c.status }}</span></td>
+      <td style="min-width:180px">
+        {% if p.vazia %}<small class="muted">sem leads</small>
+        {% else %}
+        <div class="barra barra-mini" title="{{ p.contatados }} de {{ p.total }} contatados">
+          {% for f in p.fases if f.quantidade %}<span class="fase-{{ f.chave }}" style="width:{{ f.pct }}%"></span>{% endfor %}
+        </div>
+        <small>{{ p.contatados }}/{{ p.total }}{% if p.concluida %} · <strong class="ok">fila concluída</strong>{% endif %}</small>
+        {% endif %}
+      </td>
       <td>{{ m.na_fila }}</td>
       <td>{{ m.enviados }}</td>
       <td>{{ m.respostas }}</td>

@@ -145,3 +145,18 @@ textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--border); bo
 .msg small { display: block; color: var(--muted); margin-bottom: 2px; }
 .msg.saida { justify-self: end; background: #e7f6ea; border-color: #c7e8cd; }
 .msg.autor-humano { background: #fff4e5; border-color: #f0c98a; }
+
+/* Barra de progresso das campanhas */
+.barra { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: #e8eaee; }
+.barra span { display: block; height: 100%; }
+.barra-mini { height: 8px; margin-bottom: 2px; }
+.fase-reuniao { background: #1f9d55; }
+.fase-conversa { background: #f0a020; }
+.fase-humano { background: #8e5bd8; }
+.fase-aguardando { background: #1f6feb; }
+.fase-encerrado { background: #c0392b; }
+.fase-fila { background: #c9ced6; }
+.legenda { display: flex; flex-wrap: wrap; gap: 6px 18px; list-style: none; padding: 0; margin: 10px 0; font-size: 13px; }
+.legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.concluida { background: #dcf5e3; border: 1px solid #a8dfb8; border-radius: 8px; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.card.progresso { margin-bottom: 16px; }

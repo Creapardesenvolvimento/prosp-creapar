@@ -20,6 +20,7 @@ from app.models import (
     EnvioTipo,
     Lead,
     LeadStatus,
+    NumeroStatus,
     Reuniao,
     WhatsappNumber,
 )
@@ -159,6 +160,57 @@ def encerrar(db: Session, campanha: Campanha) -> int:
     db.flush()
     logger.info("campanha encerrada", extra={"campanha_id": campanha.id, "leads_devolvidos": result.rowcount})
     return result.rowcount
+
+
+# Fases do lead na barra de progresso, na ordem em que aparecem.
+FASES_PROGRESSO = [
+    ("reuniao", "Reunião agendada", [LeadStatus.REUNIAO_AGENDADA]),
+    ("conversa", "Em conversa", [LeadStatus.RESPONDEU, LeadStatus.EM_CONVERSA]),
+    ("humano", "Com humano", [LeadStatus.HUMANO_ASSUMIU]),
+    ("aguardando", "Aguardando resposta", [LeadStatus.ENVIADO]),
+    ("encerrado", "Encerrados", [LeadStatus.SEM_INTERESSE, LeadStatus.OPT_OUT, LeadStatus.SEM_RESPOSTA]),
+    ("fila", "Na fila", [LeadStatus.NA_FILA]),
+]
+
+
+def progresso(db: Session, campanha: Campanha) -> dict:
+    """Quanto da fila da campanha já foi contatado e em que pé estão os leads."""
+    contagem = dict(
+        db.execute(
+            select(Lead.status, func.count()).where(Lead.campanha_id == campanha.id).group_by(Lead.status)
+        ).all()
+    )
+    total = sum(contagem.values())
+    fases = []
+    for chave, rotulo, status in FASES_PROGRESSO:
+        quantidade = sum(contagem.get(s, 0) for s in status)
+        fases.append({"chave": chave, "rotulo": rotulo, "quantidade": quantidade, "pct": round(100 * quantidade / total, 1) if total else 0})
+    na_fila = next(f["quantidade"] for f in fases if f["chave"] == "fila")
+    contatados = total - na_fila
+
+    # Capacidade: o que os números da campanha ainda podem mandar hoje e por dia (limite da rampa).
+    conectados = [n for n in campanha.numeros if n.status == NumeroStatus.CONECTADO]
+    por_dia = sum(n.limite_diario_atual for n in conectados)
+    restante_hoje = sum(max(n.limite_diario_atual - n.envios_hoje, 0) for n in conectados)
+    if na_fila == 0 or por_dia == 0:
+        dias = None
+    elif na_fila <= restante_hoje:
+        dias = 0  # termina hoje
+    else:
+        dias = -(-(na_fila - restante_hoje) // por_dia)  # arredonda para cima
+    return {
+        "total": total,
+        "contatados": contatados,
+        "na_fila": na_fila,
+        "pct_contatados": round(100 * contatados / total) if total else 0,
+        "fases": fases,
+        "por_dia": por_dia,
+        "restante_hoje": restante_hoje,
+        "dias_restantes": dias,
+        "sem_numero": not conectados,
+        "concluida": total > 0 and na_fila == 0,
+        "vazia": total == 0,
+    }
 
 
 def metricas(db: Session, campanha: Campanha) -> dict:
