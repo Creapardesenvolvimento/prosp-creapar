@@ -81,7 +81,9 @@ def gerar_mensagens_ia(db: Session, campanha: Campanha, quantidade: int = 10) ->
     """Pede variações ao Claude e guarda as válidas. Retorna quantas entraram."""
     existentes = [m.texto for m in campanha.mensagens if m.ativa]
     novas = 0
-    for texto in ia.gerar_variacoes(nicho=campanha.nicho, oferta=campanha.oferta, exemplos=existentes, quantidade=quantidade):
+    for texto in ia.gerar_variacoes(
+        nicho=campanha.nicho, oferta=campanha.oferta, exemplos=existentes, quantidade=quantidade, db=db
+    ):
         try:
             adicionar_mensagem(db, campanha, texto, origem="ia")
         except CampanhaError:

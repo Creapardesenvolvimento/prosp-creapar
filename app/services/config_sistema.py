@@ -27,7 +27,7 @@ class Campo:
     chave: str
     grupo: str
     rotulo: str
-    tipo: str  # dias | hora | inteiro | decimal | rampa
+    tipo: str  # dias | hora | inteiro | decimal | rampa | texto
     ajuda: str = ""
     minimo: float | None = None
     maximo: float | None = None
@@ -50,6 +50,8 @@ CAMPOS = [
     Campo("reuniao_buffer_minutos", "Agenda", "Intervalo entre reuniões (minutos)", "inteiro", "", 0, 120),
     Campo("agenda_antecedencia_horas", "Agenda", "Antecedência mínima (horas)", "inteiro", "", 0, 72),
     Campo("agenda_dias_a_frente", "Agenda", "Oferecer horários até quantos dias à frente", "inteiro", "", 1, 60),
+    Campo("ia_modelo", "Inteligência artificial", "Modelo", "texto",
+          "Nome do modelo ou combo no OmniRouter (ex.: cc/claude-sonnet-5, auto/claude-sonnet)."),
 ]
 CAMPOS_POR_CHAVE = {c.chave: c for c in CAMPOS}
 
@@ -69,6 +71,7 @@ def padroes() -> dict:
         "reuniao_buffer_minutos": s.reuniao_buffer_minutos,
         "agenda_antecedencia_horas": s.agenda_antecedencia_horas,
         "agenda_dias_a_frente": s.agenda_dias_a_frente,
+        "ia_modelo": s.ia_modelo,
     }
 
 
@@ -94,6 +97,10 @@ def _converter(campo: Campo, bruto) -> object:
         if hora > 23 or minuto > 59:
             raise ConfigError(f"{campo.rotulo}: horário inválido.")
         return f"{hora:02d}:{minuto:02d}"
+    if campo.tipo == "texto":
+        if not texto or len(texto) > 200 or any(c.isspace() for c in texto):
+            raise ConfigError(f"{campo.rotulo}: informe o nome, sem espaços.")
+        return texto
     if campo.tipo == "rampa":
         try:
             parse_rampa(texto)
