@@ -33,6 +33,10 @@ celery_app.conf.update(
             "task": "agente.responder_pendentes",
             "schedule": 60,
         },
+        "resumo-do-dia": {
+            "task": "agenda.resumo_automatico",
+            "schedule": 300,
+        },
         "virada-do-dia": {
             "task": "numeros.virada_do_dia",
             "schedule": crontab(hour=0, minute=0),

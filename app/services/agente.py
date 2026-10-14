@@ -211,9 +211,16 @@ FERRAMENTAS = [
             "type": "object",
             "properties": {
                 "inicio": {"type": "string", "description": "Data e hora em ISO 8601, como veio de consultar_horarios."},
-                "observacoes": {"type": "string", "description": "O que o vendedor precisa saber (dor, porte, interesse)."},
+                "observacoes": {
+                    "type": "string",
+                    "description": (
+                        "Resumo da conversa para o vendedor, em 1 ou 2 frases objetivas: o que mais interessou o lead "
+                        "(ex.: economia, treinamento), queixas ou objeções que ele citou (fornecedor atual, preço, entrega) "
+                        "e o porte (nº de quartos, unidades ou funcionários, se ele disse). Só o que o lead disse; não invente."
+                    ),
+                },
             },
-            "required": ["inicio"],
+            "required": ["inicio", "observacoes"],
         },
     },
     {
@@ -340,6 +347,7 @@ Como escrever:
 
 Etapa Ação e agendamento:
 - Para marcar a conversa, chame consultar_horarios e ofereça as duas sugestões. Quando o lead escolher, chame agendar_reuniao e confirme dia, hora e o link.
+- Em agendar_reuniao, escreva em observacoes um resumo curto para o vendedor: o que interessou o lead, queixas ou objeções e o porte.
 
 Quando passar para humano (chame passar_para_humano):
 - pedido de preço detalhado, tabela ou orçamento;
@@ -372,7 +380,7 @@ def _executar_ferramenta(db: Session, lead: Lead, nome: str, entrada: dict) -> t
             inicio = datetime.fromisoformat(entrada.get("inicio", ""))
             reuniao = agenda.agendar(
                 db, inicio, lead_nome=lead.nome, lead_telefone=lead.telefone, lead_id=lead.id,
-                observacoes=(entrada.get("observacoes") or "Agendado pela IA")[:1000],
+                observacoes=(entrada.get("observacoes") or "").strip()[:1000] or "Agendado pela IA (sem observação).",
             )
         except (ValueError, AgendaError) as exc:
             return f"Não foi possível agendar: {exc}. Consulte os horários de novo e ofereça outros.", False

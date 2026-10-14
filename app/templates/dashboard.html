@@ -4,6 +4,7 @@
 <h1>Olá, {{ user.nome }}</h1>
 {% include "numeros/_alertas.html" %}
 <p><strong>{{ no_rodizio }}</strong> número(s) conectado(s) no rodízio. <a href="/numeros">Ver números</a></p>
+<p><strong>{{ reunioes_hoje }}</strong> reunião(ões) hoje. <a href="/agenda/dia">Ver reuniões do dia</a></p>
 {% for c, p in campanhas %}
 <h2 style="margin-top:20px"><a href="/campanhas/{{ c.id }}">{{ c.nome }}</a> <span class="status campanha-{{ c.status }}">{{ c.status }}</span></h2>
 {% include "campanhas/_progresso.html" %}

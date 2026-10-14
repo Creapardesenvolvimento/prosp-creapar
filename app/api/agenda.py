@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user, templates
 from app.db import get_db
+from app.integrations.evolution import EvolutionError
 from app.models import Reuniao, ReuniaoStatus, User, Vendedor, VendedorBloqueio
 from app.services import agenda as svc
+from app.services import config_sistema
 from app.services.agenda import DIAS_SEMANA, AgendaError, como_utc
 from app.tasks.agenda import avisar_cancelamento, avisar_vendedor
 
@@ -155,6 +157,8 @@ def agenda(
             "sugestao": " ou ".join(svc.formatar_horario(h.inicio) for h in svc.sugerir_horarios(livres)),
             "vendedores": vendedores,
             "vendedor_id": vendedor_id,
+            "notificar": svc.telefone_notificacoes(db),
+            "avisar_vendedor": config_sistema.valores(db)["avisar_vendedor"],
             "formatar": svc.formatar_horario,
             "local": _local,
             "erro": erro,
@@ -184,6 +188,73 @@ async def agendar_manual(request: Request, db: Session = Depends(get_db)):
     db.commit()
     avisar_vendedor.delay(reuniao.id)
     return RedirectResponse("/agenda", status_code=303)
+
+
+def _dia(data: str | None) -> date:
+    hoje = datetime.now(timezone.utc).astimezone(svc.regras_padrao().tz).date()
+    try:
+        return date.fromisoformat(data) if data else hoje
+    except ValueError:
+        return hoje
+
+
+@router.get("/agenda/dia")
+def reunioes_do_dia(
+    request: Request,
+    data: str | None = None,
+    erro: str | None = None,
+    ok: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    dia = _dia(data)
+    hoje = _dia(None)
+    return templates.TemplateResponse(
+        request,
+        "reunioes_dia.html",
+        {
+            "user": user,
+            "dia": dia,
+            "titulo_dia": svc.formatar_dia(dia),
+            "hoje": hoje,
+            "amanha": hoje + timedelta(days=1),
+            "reunioes": svc.reunioes_do_dia(db, dia),
+            "notificar": svc.telefone_notificacoes(db),
+            "local": _local,
+            "erro": erro,
+            "ok": ok,
+        },
+    )
+
+
+@router.post("/agenda/dia/enviar")
+async def enviar_resumo(request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    dia = _dia(form.get("data"))
+    try:
+        quantidade = svc.enviar_resumo(db, dia)
+    except (AgendaError, EvolutionError) as exc:
+        db.rollback()
+        mensagem = str(exc) if isinstance(exc, AgendaError) else "A Evolution não conseguiu enviar. Tente de novo."
+        return RedirectResponse(f"/agenda/dia?data={dia.isoformat()}&erro={quote(mensagem)}", status_code=303)
+    db.commit()
+    mensagem = f"Resumo com {quantidade} reunião(ões) enviado para o WhatsApp de notificações."
+    return RedirectResponse(f"/agenda/dia?data={dia.isoformat()}&ok={quote(mensagem)}", status_code=303)
+
+
+@router.post("/reunioes/{reuniao_id}/observacoes")
+async def editar_observacoes(reuniao_id: int, request: Request, db: Session = Depends(get_db)):
+    reuniao = db.get(Reuniao, reuniao_id)
+    if reuniao is None:
+        raise HTTPException(status_code=404)
+    form = await request.form()
+    reuniao.observacoes = form.get("observacoes", "").strip()[:1000]
+    db.commit()
+    dia = como_utc(reuniao.inicio).astimezone(svc.regras_padrao().tz).date()
+    voltar = form.get("voltar") or f"/agenda/dia?data={dia.isoformat()}"
+    if not voltar.startswith("/agenda"):  # só volta para telas da agenda
+        voltar = "/agenda"
+    return RedirectResponse(voltar, status_code=303)
 
 
 _ACOES = {

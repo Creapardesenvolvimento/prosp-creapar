@@ -345,15 +345,16 @@ def adicionar_bloqueio(
 def mensagem_aviso(reuniao: Reuniao) -> str:
     linhas = [
         "📅 *Nova reunião agendada*",
-        f"Lead: {reuniao.lead_nome}",
+        f"Horário: {formatar_horario(reuniao.inicio)}",
+        f"Nome: {reuniao.lead_nome}",
     ]
     if reuniao.lead_telefone:
-        linhas.append(f"WhatsApp: {reuniao.lead_telefone}")
-    linhas.append(f"Quando: {formatar_horario(reuniao.inicio)}")
+        linhas.append(f"Telefone: {reuniao.lead_telefone}")
+    if reuniao.observacoes:
+        linhas.append(f"Observação: {reuniao.observacoes}")
+    linhas.append(f"Vendedor: {reuniao.vendedor.nome}")
     if reuniao.link:
         linhas.append(f"Link: {reuniao.link}")
-    if reuniao.observacoes:
-        linhas.append(f"Obs.: {reuniao.observacoes}")
     return "\n".join(linhas)
 
 
@@ -361,46 +362,47 @@ def mensagem_cancelamento(reuniao: Reuniao) -> str:
     return "\n".join(
         [
             "❌ *Reunião cancelada*",
-            f"Lead: {reuniao.lead_nome}",
             f"Era: {formatar_horario(reuniao.inicio)}",
+            f"Nome: {reuniao.lead_nome}",
+            f"Vendedor: {reuniao.vendedor.nome}",
             "O horário voltou a ficar livre na agenda.",
         ]
     )
 
 
-def _enviar_ao_vendedor(db: Session, reuniao: Reuniao, texto: str, evento: str) -> str | None:
-    """Manda o texto ao WhatsApp do vendedor pelo número conectado com menos envios. Retorna o id da mensagem."""
+def enviar_whatsapp(db: Session, telefone: str, texto: str, evento: str, **contexto) -> str | None:
+    """Manda um texto do sistema pelo número conectado com menos envios. Retorna o id da mensagem."""
     numeros = sorted(numeros_no_rodizio(db), key=lambda n: n.envios_hoje)
     if not numeros:
-        logger.warning("nenhum número conectado para avisar o vendedor", extra={"reuniao_id": reuniao.id, "evento": evento})
+        logger.warning("nenhum número conectado para enviar o aviso", extra={"evento": evento, **contexto})
         return None
     numero = numeros[0]
-    resposta = evolution.get_client(numero.server).send_text(
-        numero.instance_name, para_evolution(reuniao.vendedor.telefone), texto
-    )
+    resposta = evolution.get_client(numero.server).send_text(numero.instance_name, para_evolution(telefone), texto)
     mensagem_id = (resposta.get("key") or {}).get("id")
     if mensagem_id:
         from app.services.idempotency import register_event
 
         register_event(db, "envio-sistema", mensagem_id)
-    logger.info(
-        "vendedor avisado",
-        extra={
-            "reuniao_id": reuniao.id,
-            "vendedor_id": reuniao.vendedor_id,
-            "evento": evento,
-            "numero_id": numero.id,
-            "mensagem_id": mensagem_id,
-        },
-    )
+    logger.info("aviso enviado", extra={"evento": evento, "numero_id": numero.id, "mensagem_id": mensagem_id, **contexto})
     return mensagem_id
 
 
+def telefone_notificacoes(db: Session) -> str | None:
+    return config_sistema.valores(db)["notificar_telefone"] or None
+
+
+def vendedor_recebe_aviso(db: Session, reuniao: Reuniao) -> bool:
+    return bool(reuniao.vendedor.telefone) and bool(config_sistema.valores(db)["avisar_vendedor"])
+
+
 def avisar_vendedor(db: Session, reuniao: Reuniao) -> str | None:
-    """Avisa o vendedor da reunião nova (uma vez só)."""
-    if reuniao.vendedor_avisado_em is not None or not reuniao.vendedor.telefone:
+    """Avisa o vendedor da reunião nova (uma vez só), se o aviso ao vendedor estiver ligado."""
+    if reuniao.vendedor_avisado_em is not None or not vendedor_recebe_aviso(db, reuniao):
         return None
-    mensagem_id = _enviar_ao_vendedor(db, reuniao, mensagem_aviso(reuniao), "agendada")
+    mensagem_id = enviar_whatsapp(
+        db, reuniao.vendedor.telefone, mensagem_aviso(reuniao), "vendedor-agendada",
+        reuniao_id=reuniao.id, vendedor_id=reuniao.vendedor_id,
+    )
     if mensagem_id is not None:
         reuniao.vendedor_avisado_em = datetime.now(timezone.utc)
     return mensagem_id
@@ -415,7 +417,119 @@ def avisar_cancelamento(db: Session, reuniao: Reuniao) -> str | None:
         or not reuniao.vendedor.telefone
     ):
         return None
-    mensagem_id = _enviar_ao_vendedor(db, reuniao, mensagem_cancelamento(reuniao), "cancelada")
+    mensagem_id = enviar_whatsapp(
+        db, reuniao.vendedor.telefone, mensagem_cancelamento(reuniao), "vendedor-cancelada",
+        reuniao_id=reuniao.id, vendedor_id=reuniao.vendedor_id,
+    )
     if mensagem_id is not None:
         reuniao.cancelamento_avisado_em = datetime.now(timezone.utc)
     return mensagem_id
+
+
+def notificar_agendamento(db: Session, reuniao: Reuniao) -> str | None:
+    """Avisa o WhatsApp de notificações da reunião nova (uma vez só)."""
+    telefone = telefone_notificacoes(db)
+    if reuniao.notificado_em is not None or telefone is None or reuniao.status != ReuniaoStatus.AGENDADA:
+        return None
+    mensagem_id = enviar_whatsapp(db, telefone, mensagem_aviso(reuniao), "notificacao-agendada", reuniao_id=reuniao.id)
+    if mensagem_id is not None:
+        reuniao.notificado_em = datetime.now(timezone.utc)
+    return mensagem_id
+
+
+def notificar_cancelamento(db: Session, reuniao: Reuniao) -> str | None:
+    """Avisa o WhatsApp de notificações que a reunião caiu, se ele tinha sido avisado do agendamento."""
+    telefone = telefone_notificacoes(db)
+    if (
+        reuniao.status != ReuniaoStatus.CANCELADA
+        or reuniao.notificado_em is None
+        or reuniao.cancelamento_notificado_em is not None
+        or telefone is None
+    ):
+        return None
+    mensagem_id = enviar_whatsapp(db, telefone, mensagem_cancelamento(reuniao), "notificacao-cancelada", reuniao_id=reuniao.id)
+    if mensagem_id is not None:
+        reuniao.cancelamento_notificado_em = datetime.now(timezone.utc)
+    return mensagem_id
+
+
+# --- Reuniões do dia ------------------------------------------------------------
+
+
+def reunioes_do_dia(db: Session, dia: date, regras: Regras | None = None) -> list[Reuniao]:
+    """Reuniões agendadas (não canceladas nem já resolvidas) no dia, no fuso da agenda."""
+    regras = regras or regras_padrao()
+    inicio = datetime.combine(dia, time(0), tzinfo=regras.tz)
+    return list(
+        db.scalars(
+            select(Reuniao)
+            .where(
+                Reuniao.status == ReuniaoStatus.AGENDADA,
+                Reuniao.inicio >= utc(inicio),
+                Reuniao.inicio < utc(inicio + timedelta(days=1)),
+            )
+            .options(selectinload(Reuniao.vendedor))
+            .order_by(Reuniao.inicio, Reuniao.id)
+        )
+    )
+
+
+def formatar_dia(dia: date) -> str:
+    """ "quinta, 16/10" """
+    return f"{DIAS_SEMANA[dia.weekday()]}, {dia:%d/%m}"
+
+
+def mensagem_resumo(dia: date, reunioes: list[Reuniao], regras: Regras | None = None) -> str:
+    regras = regras or regras_padrao()
+    linhas = [f"📋 *Reuniões de {formatar_dia(dia)}* ({len(reunioes)})"]
+    for i, r in enumerate(reunioes, 1):
+        linhas += ["", f"*{i}) {como_utc(r.inicio).astimezone(regras.tz):%H:%M}* · {r.lead_nome}"]
+        if r.lead_telefone:
+            linhas.append(f"Telefone: {r.lead_telefone}")
+        if r.observacoes:
+            linhas.append(f"Observação: {r.observacoes}")
+        linhas.append(f"Vendedor: {r.vendedor.nome}")
+        if r.link:
+            linhas.append(f"Link: {r.link}")
+    return "\n".join(linhas)
+
+
+def enviar_resumo(db: Session, dia: date, regras: Regras | None = None) -> int:
+    """Manda o resumo do dia ao WhatsApp de notificações. Retorna quantas reuniões foram listadas."""
+    telefone = telefone_notificacoes(db)
+    if telefone is None:
+        raise AgendaError("Cadastre o WhatsApp de notificações em Configurações.")
+    reunioes = reunioes_do_dia(db, dia, regras)
+    if not reunioes:
+        raise AgendaError(f"Nenhuma reunião agendada para {formatar_dia(dia)}.")
+    if enviar_whatsapp(db, telefone, mensagem_resumo(dia, reunioes, regras), "resumo-do-dia", dia=dia.isoformat()) is None:
+        raise AgendaError("Nenhum número conectado para enviar o resumo.")
+    return len(reunioes)
+
+
+def resumo_automatico(db: Session, agora: datetime | None = None) -> int | None:
+    """Chamado pelo beat: na hora configurada, manda o resumo do dia uma vez só.
+
+    O dia fica marcado mesmo sem reuniões, para uma reunião marcada mais tarde não disparar o resumo fora de hora.
+    Retorna quantas reuniões foram listadas (None quando não era a vez).
+    """
+    from app.services.idempotency import register_event
+
+    v = config_sistema.valores(db)
+    regras = regras_padrao()
+    local = como_utc(agora or datetime.now(timezone.utc)).astimezone(regras.tz)
+    if not v["resumo_automatico"] or not v["notificar_telefone"] or local.time() < time.fromisoformat(v["resumo_hora"]):
+        return None
+    if not register_event(db, "resumo-do-dia", local.date().isoformat()):
+        return None  # já enviado hoje
+    reunioes = reunioes_do_dia(db, local.date(), regras)
+    if not reunioes:
+        logger.info("resumo do dia: nenhuma reunião", extra={"dia": local.date().isoformat()})
+        return 0
+    mensagem_id = enviar_whatsapp(
+        db, v["notificar_telefone"], mensagem_resumo(local.date(), reunioes, regras), "resumo-do-dia",
+        dia=local.date().isoformat(),
+    )
+    if mensagem_id is None:
+        raise AgendaError("Nenhum número conectado para enviar o resumo.")
+    return len(reunioes)

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Reuniões do dia{% endblock %}
+{% block content %}
+<p><a href="/agenda">← Agenda</a></p>
+<div class="titulo">
+  <h1>Reuniões de {{ titulo_dia }}</h1>
+  <div class="acoes">
+    <a class="botao{{ '' if dia == hoje else ' secundario' }}" href="/agenda/dia?data={{ hoje.isoformat() }}">Hoje</a>
+    <a class="botao{{ '' if dia == amanha else ' secundario' }}" href="/agenda/dia?data={{ amanha.isoformat() }}">Amanhã</a>
+    <form method="get" action="/agenda/dia"><input type="date" name="data" value="{{ dia.isoformat() }}" onchange="this.form.submit()"></form>
+  </div>
+</div>
+{% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+{% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
+
+{% if reunioes %}
+<div class="card">
+  <form method="post" action="/agenda/dia/enviar" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Enviando…'">
+    <input type="hidden" name="data" value="{{ dia.isoformat() }}">
+    <button type="submit" {{ "disabled" if not notificar }}>Enviar resumo para o WhatsApp</button>
+    {% if notificar %}
+    <small class="muted">Vai uma mensagem só, com as {{ reunioes|length }} reunião(ões), para {{ notificar }}.</small>
+    {% else %}
+    <small class="erro">Cadastre o WhatsApp de notificações em <a href="/config">Configurações</a>.</small>
+    {% endif %}
+  </form>
+</div>
+
+{% for r in reunioes %}
+<div class="card reuniao-dia">
+  <h2>{{ local(r.inicio).strftime("%H:%M") }} · {{ r.lead_nome }}</h2>
+  <p>
+    {% if r.lead_telefone %}Telefone: {{ r.lead_telefone }}<br>{% endif %}
+    Vendedor: {{ r.vendedor.nome }}
+    {% if r.link %}<br>Link: <a href="{{ r.link }}" target="_blank" rel="noopener">{{ r.link }}</a>{% endif %}
+    {% if r.lead_id %}<br><a href="/leads/{{ r.lead_id }}">Ver conversa</a>{% endif %}
+  </p>
+  <form method="post" action="/reunioes/{{ r.id }}/observacoes" class="form">
+    <input type="hidden" name="voltar" value="/agenda/dia?data={{ dia.isoformat() }}">
+    <label>Observação
+      <textarea name="observacoes" rows="2" maxlength="1000">{{ r.observacoes }}</textarea>
+    </label>
+    <button type="submit" class="secundario">Salvar observação</button>
+  </form>
+</div>
+{% endfor %}
+{% else %}
+<p class="muted">Nenhuma reunião agendada para {{ titulo_dia }}.</p>
+{% endif %}
+{% endblock %}

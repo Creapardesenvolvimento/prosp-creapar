@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Agenda{% endblock %}
 {% block content %}
-<h1>Agenda</h1>
+<div class="titulo">
+  <h1>Agenda</h1>
+  <a class="botao" href="/agenda/dia">Reuniões do dia</a>
+</div>
 {% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
 
 <div class="titulo">
@@ -23,8 +26,10 @@
     {% for r in reunioes %}
     <tr>
       <td>{{ formatar(r.inicio) }}</td>
-      <td>{{ r.lead_nome }}{% if r.lead_telefone %}<br><small>{{ r.lead_telefone }}</small>{% endif %}</td>
-      <td>{{ r.vendedor.nome }}{% if r.status == "agendada" and r.vendedor.telefone %}<br><small>{{ "avisado" if r.vendedor_avisado_em else "aviso pendente" }}</small>{% endif %}</td>
+      <td>{{ r.lead_nome }}{% if r.lead_telefone %}<br><small>{{ r.lead_telefone }}</small>{% endif %}
+        {% if r.observacoes %}<br><small title="{{ r.observacoes }}">{{ r.observacoes|truncate(60) }}</small>{% endif %}</td>
+      <td>{{ r.vendedor.nome }}{% if r.status == "agendada" and r.vendedor.telefone and avisar_vendedor %}<br><small>{{ "avisado" if r.vendedor_avisado_em else "aviso pendente" }}</small>{% endif %}
+        {% if r.status == "agendada" and notificar %}<br><small>{{ "notificação enviada" if r.notificado_em else "notificação pendente" }}</small>{% endif %}</td>
       <td><span class="status {{ 'conectado' if r.status == 'agendada' else '' }}">{{ r.status|replace("_", " ") }}</span>{% if r.status == "cancelada" and r.vendedor_avisado_em %}<br><small>{{ "vendedor avisado" if r.cancelamento_avisado_em else "aviso pendente" }}</small>{% endif %}</td>
       <td>
         {% if r.status == "agendada" %}

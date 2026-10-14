@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
@@ -7,7 +9,7 @@ from app.models import User
 from sqlalchemy import select
 
 from app.models import Campanha, CampanhaStatus
-from app.services import campanhas
+from app.services import agenda, campanhas
 from app.services import numeros as svc
 
 router = APIRouter()
@@ -23,6 +25,7 @@ def dashboard(request: Request, db: Session = Depends(get_db), user: User = Depe
             "alertas": svc.numeros_com_alerta(db),
             "pausados_auto": svc.numeros_pausados_automaticamente(db),
             "no_rodizio": len(svc.numeros_no_rodizio(db)),
+            "reunioes_hoje": len(agenda.reunioes_do_dia(db, datetime.now(timezone.utc).astimezone(agenda.regras_padrao().tz).date())),
             "campanhas": [
                 (c, campanhas.progresso(db, c))
                 for c in db.scalars(

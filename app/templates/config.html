@@ -22,6 +22,11 @@
     {% elif campo.tipo == "simnao" %}
     <label class="check"><input type="checkbox" name="{{ campo.chave }}" value="1" {{ "checked" if v[campo.chave] }}> {{ campo.rotulo }}</label>
     <small>{{ campo.ajuda }} Padrão de fábrica: {{ "ligado" if padrao[campo.chave] else "desligado" }}.</small>
+    {% elif campo.tipo == "telefone" %}
+    <label>{{ campo.rotulo }}
+      <input type="tel" name="{{ campo.chave }}" value="{{ v[campo.chave] }}" placeholder="(11) 99999-8888">
+      <small>{{ campo.ajuda }}</small>
+    </label>
     {% else %}
     <label>{{ campo.rotulo }}
       <input type="{{ 'time' if campo.tipo == 'hora' else ('number' if campo.tipo in ('inteiro', 'decimal') else 'text') }}"

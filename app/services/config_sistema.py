@@ -9,11 +9,13 @@ from dataclasses import dataclass
 from datetime import time
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Configuracao
+from app.models import Configuracao, NumeroStatus, WhatsappNumber
 from app.services.rampa import Rampa, parse_rampa
+from app.services.telefone import normalizar_telefone
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,7 @@ class Campo:
     chave: str
     grupo: str
     rotulo: str
-    tipo: str  # dias | hora | inteiro | decimal | rampa | texto (sem espaços) | frase | simnao
+    tipo: str  # dias | hora | inteiro | decimal | rampa | texto (sem espaços) | frase | simnao | telefone (opcional)
     ajuda: str = ""
     minimo: float | None = None
     maximo: float | None = None
@@ -54,6 +56,14 @@ CAMPOS = [
     Campo("reuniao_buffer_minutos", "Agenda", "Intervalo entre reuniões (minutos)", "inteiro", "", 0, 120),
     Campo("agenda_antecedencia_horas", "Agenda", "Antecedência mínima (horas)", "inteiro", "", 0, 72),
     Campo("agenda_dias_a_frente", "Agenda", "Oferecer horários até quantos dias à frente", "inteiro", "", 1, 60),
+    Campo("notificar_telefone", "Notificações", "WhatsApp que recebe as notificações de reunião", "telefone",
+          "Recebe cada reunião agendada ou cancelada e o resumo do dia. Não use um dos números de prospecção. "
+          "Vazio desliga."),
+    Campo("avisar_vendedor", "Notificações", "Avisar também o vendedor no WhatsApp dele", "simnao",
+          "Desligado: só o WhatsApp de notificações recebe, e você repassa."),
+    Campo("resumo_automatico", "Notificações", "Enviar o resumo das reuniões do dia automaticamente", "simnao",
+          "Vai para o WhatsApp de notificações, só nos dias com reunião."),
+    Campo("resumo_hora", "Notificações", "Horário do resumo automático", "hora"),
     Campo("ia_modelo", "Inteligência artificial", "Modelo", "texto",
           "Nome do modelo ou combo no OmniRouter (ex.: cc/claude-sonnet-5, auto/claude-sonnet)."),
     Campo("pitch_em_sequencia", "Inteligência artificial", "Mandar Interesse, Desejo e Ação em sequência", "simnao",
@@ -86,6 +96,10 @@ def padroes() -> dict:
         "empresa_nome": "Brafort10",
         "atendente_nome": "Bruna",
         "economia_texto": "até 50%",
+        "notificar_telefone": "",
+        "avisar_vendedor": True,
+        "resumo_automatico": False,
+        "resumo_hora": "08:00",
     }
 
 
@@ -113,6 +127,13 @@ def _converter(campo: Campo, bruto) -> object:
         return f"{hora:02d}:{minuto:02d}"
     if campo.tipo == "simnao":
         return bruto in (True, "1", "on", "sim", "true")
+    if campo.tipo == "telefone":
+        if not texto:
+            return ""
+        telefone = normalizar_telefone(texto)
+        if telefone is None:
+            raise ConfigError(f"{campo.rotulo}: telefone inválido. Use DDD + número, ex.: (11) 99999-8888.")
+        return telefone
     if campo.tipo == "frase":
         if not texto or len(texto) > 200:
             raise ConfigError(f"{campo.rotulo}: informe um texto de até 200 caracteres.")
@@ -144,6 +165,12 @@ def salvar(db: Session, dados: dict) -> None:
         raise ConfigError("O intervalo mínimo não pode ser maior que o máximo.")
     if resultado["disparo_inicio"] >= resultado["disparo_fim"]:
         raise ConfigError("O início do horário comercial precisa ser antes do fim.")
+    if novos.get("notificar_telefone") and db.scalar(
+        select(WhatsappNumber.id).where(
+            WhatsappNumber.telefone == novos["notificar_telefone"], WhatsappNumber.status != NumeroStatus.REMOVIDO
+        )
+    ):
+        raise ConfigError("O WhatsApp de notificações não pode ser um dos números de prospecção.")
     for chave, valor in novos.items():
         linha = db.get(Configuracao, chave)
         if linha is None:

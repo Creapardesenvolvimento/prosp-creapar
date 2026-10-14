@@ -81,6 +81,10 @@ code { font-size: 13px; }
   color: #fff;
 }
 button.perigo { background: var(--danger); }
+.botao.secundario, button.secundario { background: var(--surface); color: var(--accent); border: 1px solid var(--accent); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.reuniao-dia { margin-top: 12px; }
+.reuniao-dia p { margin: 0 0 8px; }
 
 .alerta {
   background: #fff4e5;
