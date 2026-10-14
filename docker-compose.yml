@@ -19,11 +19,19 @@ services:
 
   worker:
     <<: *app
-    command: celery -A app.celery_app worker --loglevel=info --concurrency=4
+    command: sh start.sh
+    environment:
+      ROLE: worker
+      DATABASE_URL: postgresql+psycopg://creapar:${POSTGRES_PASSWORD}@postgres:5432/creapar
+      REDIS_URL: redis://redis:6379/0
 
   beat:
     <<: *app
-    command: celery -A app.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    command: sh start.sh
+    environment:
+      ROLE: beat
+      DATABASE_URL: postgresql+psycopg://creapar:${POSTGRES_PASSWORD}@postgres:5432/creapar
+      REDIS_URL: redis://redis:6379/0
 
   postgres:
     image: postgres:16-alpine

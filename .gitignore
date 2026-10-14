@@ -8,3 +8,5 @@ __pycache__/
 celerybeat-schedule*
 graphify-out/
 .obsidian/
+.env.*
+!.env.example
