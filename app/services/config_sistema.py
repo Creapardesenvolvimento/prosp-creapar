@@ -27,7 +27,7 @@ class Campo:
     chave: str
     grupo: str
     rotulo: str
-    tipo: str  # dias | hora | inteiro | decimal | rampa | texto (sem espaços) | frase
+    tipo: str  # dias | hora | inteiro | decimal | rampa | texto (sem espaços) | frase | simnao
     ajuda: str = ""
     minimo: float | None = None
     maximo: float | None = None
@@ -56,6 +56,9 @@ CAMPOS = [
     Campo("agenda_dias_a_frente", "Agenda", "Oferecer horários até quantos dias à frente", "inteiro", "", 1, 60),
     Campo("ia_modelo", "Inteligência artificial", "Modelo", "texto",
           "Nome do modelo ou combo no OmniRouter (ex.: cc/claude-sonnet-5, auto/claude-sonnet)."),
+    Campo("pitch_em_sequencia", "Inteligência artificial", "Mandar Interesse, Desejo e Ação em sequência", "simnao",
+          "Depois que o lead responde a Atenção, as três etapas saem uma atrás da outra, com poucos segundos entre elas. "
+          "Desligado: uma etapa por resposta do lead."),
     Campo("ia_espera_segundos", "Inteligência artificial", "Esperar antes de responder (segundos)", "inteiro",
           "Junta as mensagens que o lead manda em sequência numa resposta só.", 3, 120),
 ]
@@ -79,6 +82,7 @@ def padroes() -> dict:
         "agenda_dias_a_frente": s.agenda_dias_a_frente,
         "ia_modelo": s.ia_modelo,
         "ia_espera_segundos": 20,
+        "pitch_em_sequencia": True,
         "empresa_nome": "Brafort10",
         "atendente_nome": "Bruna",
         "economia_texto": "até 50%",
@@ -107,6 +111,8 @@ def _converter(campo: Campo, bruto) -> object:
         if hora > 23 or minuto > 59:
             raise ConfigError(f"{campo.rotulo}: horário inválido.")
         return f"{hora:02d}:{minuto:02d}"
+    if campo.tipo == "simnao":
+        return bruto in (True, "1", "on", "sim", "true")
     if campo.tipo == "frase":
         if not texto or len(texto) > 200:
             raise ConfigError(f"{campo.rotulo}: informe um texto de até 200 caracteres.")

@@ -219,7 +219,9 @@ async def salvar_config(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(f"/config?ok={quote('Padrões de fábrica restaurados.')}", status_code=303)
     # Dias vêm de checkboxes: nenhum marcado não aparece no formulário, mas é uma escolha (inválida).
     dados = {c.chave: form.getlist(c.chave) for c in CAMPOS if c.tipo == "dias"}
-    dados.update({c.chave: form[c.chave] for c in CAMPOS if c.tipo != "dias" and c.chave in form})
+    # Checkbox desmarcado não vem no formulário.
+    dados.update({c.chave: form.get(c.chave, "") for c in CAMPOS if c.tipo == "simnao"})
+    dados.update({c.chave: form[c.chave] for c in CAMPOS if c.tipo not in ("dias", "simnao") and c.chave in form})
     try:
         config_sistema.salvar(db, dados)
     except ConfigError as exc:

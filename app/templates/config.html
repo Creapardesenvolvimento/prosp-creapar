@@ -19,6 +19,9 @@
         {% endfor %}
       </div>
     </div>
+    {% elif campo.tipo == "simnao" %}
+    <label class="check"><input type="checkbox" name="{{ campo.chave }}" value="1" {{ "checked" if v[campo.chave] }}> {{ campo.rotulo }}</label>
+    <small>{{ campo.ajuda }} Padrão de fábrica: {{ "ligado" if padrao[campo.chave] else "desligado" }}.</small>
     {% else %}
     <label>{{ campo.rotulo }}
       <input type="{{ 'time' if campo.tipo == 'hora' else ('number' if campo.tipo in ('inteiro', 'decimal') else 'text') }}"

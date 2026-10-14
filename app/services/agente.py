@@ -180,18 +180,22 @@ def classificar(db: Session, lead: Lead) -> None:
 FERRAMENTAS = [
     {
         "name": "responder",
-        "description": "Envia sua mensagem ao lead. Use sempre que for escrever para ele.",
+        "description": "Envia suas mensagens ao lead, na ordem. Use sempre que for escrever para ele.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "mensagem": {"type": "string", "description": "Texto curto para o WhatsApp, sem markdown."},
+                "mensagens": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Uma mensagem por item (curtas, para WhatsApp, sem markdown). Saem com poucos segundos entre elas.",
+                },
                 "etapa": {
                     "type": "string",
                     "enum": [*ETAPAS, "conversa"],
-                    "description": "Etapa do roteiro que esta mensagem entrega, ou \"conversa\" se só respondeu uma dúvida sem avançar.",
+                    "description": "Última etapa do roteiro entregue nestas mensagens, ou \"conversa\" se só respondeu uma dúvida sem avançar.",
                 },
             },
-            "required": ["mensagem", "etapa"],
+            "required": ["mensagens", "etapa"],
         },
     },
     {
@@ -271,11 +275,27 @@ def _historico(db: Session, lead: Lead) -> tuple[str, list[dict]]:
     return abertura, conversa
 
 
+def instrucao_da_vez(etapa: str, pitch_em_sequencia: bool) -> str:
+    """O que a IA deve entregar nesta resposta, dita de forma explícita (o modelo tende a adiantar etapas)."""
+    if etapa == Etapa.ATENCAO:
+        return ("NESTA RESPOSTA: entregue só a Atenção, em UMA mensagem, e pare para o lead responder. "
+                "Não fale ainda de produto, economia nem convite (etapa = atencao).")
+    if etapa == Etapa.INTERESSE and pitch_em_sequencia:
+        return ("NESTA RESPOSTA: é a hora do pitch. Entregue Interesse, Desejo e Ação de uma vez, em TRÊS mensagens curtas "
+                "na lista `mensagens`, nessa ordem; a última termina com o convite/pergunta da Ação (etapa = acao). "
+                "Se o lead fez uma pergunta, responda-a no começo da primeira mensagem.")
+    if etapa == Etapa.ACAO:
+        return ("NESTA RESPOSTA: o roteiro já chegou à Ação. Conduza para a reunião: tire dúvidas, consulte os horários "
+                "e agende. Uma mensagem por resposta do lead.")
+    return f"NESTA RESPOSTA: entregue só a etapa {roteiros.ROTULO_ETAPA.get(etapa, etapa)}, em uma mensagem (uma etapa por resposta do lead)."
+
+
 def montar_sistema(db: Session, lead: Lead, abertura: str) -> str:
     v = config_sistema.valores(db)
     roteiro = roteiros.roteiro_do_lead(db, lead)
     campanha = db.get(Campanha, lead.campanha_id) if lead.campanha_id else None
     etapa = lead.etapa or Etapa.ATENCAO
+    em_sequencia = bool(v["pitch_em_sequencia"]) and etapa == Etapa.INTERESSE
     agora = datetime.now(timezone.utc).astimezone(agenda.regras_padrao().tz)
 
     partes = [
@@ -289,12 +309,16 @@ def montar_sistema(db: Session, lead: Lead, abertura: str) -> str:
         for nome_etapa in ETAPAS:
             texto = roteiro["etapas"].get(nome_etapa)
             if texto:
-                marca = "  ← PRÓXIMA" if nome_etapa == etapa else ""
+                if em_sequencia and nome_etapa in (Etapa.INTERESSE, Etapa.DESEJO, Etapa.ACAO):
+                    marca = "  ← PRÓXIMAS (enviar juntas)"
+                else:
+                    marca = "  ← PRÓXIMA" if nome_etapa == etapa else ""
                 linhas.append(f"- {roteiros.ROTULO_ETAPA[nome_etapa]}{marca}: {texto}")
         partes.append(
             f"\nRoteiro para {roteiro['segmento']}, porte {ROTULO_PORTE.get(roteiro['porte'], roteiro['porte'])} "
-            f"(foco: {roteiro['foco'] or 'geral'}). Siga as etapas na ordem, uma por resposta do lead:\n" + "\n".join(linhas)
+            f"(foco: {roteiro['foco'] or 'geral'}). Siga as etapas na ordem:\n" + "\n".join(linhas)
         )
+        partes.append("\n" + instrucao_da_vez(etapa, bool(v["pitch_em_sequencia"])))
     elif campanha and campanha.oferta:
         partes.append(f"\nOferta: {campanha.oferta}. Entenda a necessidade do lead e convide para uma conversa com o time.")
     if campanha and campanha.prompt_agente:
@@ -434,12 +458,25 @@ def _finalizar(db: Session, lead: Lead, nome: str, entrada: dict) -> str:
     from app.services.mensagens import adicionar_blacklist
 
     if nome == "responder":
-        texto = (entrada.get("mensagem") or "").strip()
-        if not texto:
+        mensagens = entrada.get("mensagens")
+        if isinstance(mensagens, str):
+            mensagens = [mensagens]
+        if not mensagens and entrada.get("mensagem"):  # formato antigo, com uma mensagem só
+            mensagens = [entrada["mensagem"]]
+        mensagens = [m.strip() for m in (mensagens or []) if isinstance(m, str) and m.strip()][:4]
+        if not mensagens:
             passar_para_humano(db, lead, "a IA devolveu uma resposta vazia")
             return "humano"
-        enviar_ao_lead(db, lead, texto)
-        _avancar_etapa(lead, entrada.get("etapa", "conversa"))
+        etapa = entrada.get("etapa", "conversa")
+        if (lead.etapa or Etapa.ATENCAO) == Etapa.ATENCAO and etapa in ETAPAS:
+            # Trava: na vez da Atenção a IA não pode adiantar o pitch. Se ela disse que foi além da Atenção,
+            # sai só a primeira mensagem; se ficou na Atenção (às vezes em duas partes), saem as duas.
+            mensagens = mensagens[:2] if etapa == Etapa.ATENCAO else mensagens[:1]
+            etapa = Etapa.ATENCAO
+        for texto in mensagens:
+            # O "digitando…" de cada envio (2 a 8 s) separa as mensagens, como alguém escrevendo.
+            enviar_ao_lead(db, lead, texto)
+        _avancar_etapa(lead, etapa)
         _depois_de_responder(lead)
         return "respondeu"
     if nome == "passar_para_humano":

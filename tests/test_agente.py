@@ -275,3 +275,65 @@ def test_devolver_para_ia(db, lead):
     agente.passar_para_humano(db, lead, "teste")
     agente.devolver_para_ia(db, lead)
     assert (lead.ia_ativa, lead.status, lead.handoff_motivo) == (True, LeadStatus.EM_CONVERSA, None)
+
+
+# --- ritmo do pitch -------------------------------------------------------------------
+
+
+def test_depois_da_atencao_o_pitch_sai_em_sequencia(db, lead, fake_ia, evo):
+    lead.segmento, lead.porte, lead.etapa = "Pousadas", "pequeno", Etapa.INTERESSE
+    fake_ia.fila.append(resposta(ferramenta("responder", {
+        "mensagens": ["Na Brafort10 temos produtos super concentrados.", "Dá para reduzir até 50% dos gastos.", "Que tal uma análise gratuita?"],
+        "etapa": "acao",
+    })))
+    assert agente.conversar(db, lead) == "respondeu"
+    sistema = fake_ia.chamadas[0]["system"]
+    assert sistema.count("← PRÓXIMAS (enviar juntas)") == 3 and "é a hora do pitch" in sistema
+    assert [c[3] for c in evo.called("send_text")] == [
+        "Na Brafort10 temos produtos super concentrados.", "Dá para reduzir até 50% dos gastos.", "Que tal uma análise gratuita?",
+    ]
+    assert lead.etapa == Etapa.ACAO
+    assert db.scalar(select(func.count()).select_from(Mensagem).where(Mensagem.autor == Autor.IA)) == 3
+
+
+def test_na_atencao_ainda_e_uma_mensagem_e_espera(db, lead, fake_ia, evo):
+    lead.segmento, lead.porte = "Pousadas", "pequeno"
+    fake_ia.fila.append(resposta(ferramenta("responder", {"mensagens": ["Oi! Sou a Bruna, da Brafort10."], "etapa": "atencao"})))
+    agente.conversar(db, lead)
+    sistema = fake_ia.chamadas[0]["system"]
+    assert "Atenção  ← PRÓXIMA" in sistema and "entregue só a Atenção" in sistema and "hora do pitch" not in sistema
+    assert lead.etapa == Etapa.INTERESSE
+
+
+def test_trava_impede_adiantar_o_pitch_na_atencao(db, lead, fake_ia, evo):
+    lead.segmento, lead.porte = "Pousadas", "pequeno"
+    fake_ia.fila.append(resposta(ferramenta("responder", {"mensagens": ["Oi! Sou a Bruna.", "Temos produtos.", "Bora conversar?"], "etapa": "acao"})))
+    agente.conversar(db, lead)
+    assert [c[3] for c in evo.called("send_text")] == ["Oi! Sou a Bruna."]
+    assert lead.etapa == Etapa.INTERESSE  # o pitch fica para depois da resposta do lead
+
+
+def test_atencao_em_duas_partes_sai_inteira(db, lead, fake_ia, evo):
+    lead.segmento, lead.porte = "Pousadas", "pequeno"
+    fake_ia.fila.append(resposta(ferramenta("responder", {"mensagens": ["Oi! Sou a Bruna, da Brafort10.", "Vocês buscam economia na limpeza?"], "etapa": "atencao"})))
+    agente.conversar(db, lead)
+    assert len(evo.called("send_text")) == 2 and lead.etapa == Etapa.INTERESSE
+
+
+def test_pitch_em_sequencia_pode_ser_desligado(db, lead, fake_ia, evo):
+    from app.services import config_sistema
+
+    config_sistema.salvar(db, {"pitch_em_sequencia": ""})
+    lead.segmento, lead.porte, lead.etapa = "Pousadas", "pequeno", Etapa.INTERESSE
+    fake_ia.fila.append(resposta(ferramenta("responder", {"mensagens": ["Temos produtos concentrados."], "etapa": "interesse"})))
+    agente.conversar(db, lead)
+    sistema = fake_ia.chamadas[0]["system"]
+    assert "entregue só a etapa Interesse" in sistema and "PRÓXIMAS" not in sistema
+    assert lead.etapa == Etapa.DESEJO
+
+
+def test_formato_antigo_com_uma_mensagem_ainda_funciona(db, lead, fake_ia, evo):
+    lead.segmento, lead.porte = "Pousadas", "pequeno"
+    fake_ia.fila.append(resposta(ferramenta("responder", {"mensagem": "Oi!", "etapa": "atencao"})))
+    assert agente.conversar(db, lead) == "respondeu"
+    assert evo.called("send_text")[-1][3] == "Oi!"

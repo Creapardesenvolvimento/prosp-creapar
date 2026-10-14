@@ -70,3 +70,18 @@ def test_tela_de_configuracoes(logged_client):
 
     logged_client.post("/config", data={"restaurar": "1"})
     assert 'name="intervalo_min_minutos" value="2"' in logged_client.get("/config").text
+
+
+def test_checkbox_do_pitch(logged_client):
+    from app.db import SessionLocal
+
+    def valor():
+        with SessionLocal() as s:  # sessão curta: uma leitura aberta travaria o SQLite para a próxima requisição
+            return config_sistema.valores(s)["pitch_em_sequencia"]
+
+    assert valor() is True
+    logged_client.post("/config", data={"disparo_dias": ["0"]})  # checkbox desmarcado não vem no formulário
+    assert valor() is False
+    logged_client.post("/config", data={"disparo_dias": ["0"], "pitch_em_sequencia": "1"})
+    assert valor() is True
+    assert "Mandar Interesse, Desejo e Ação em sequência" in logged_client.get("/config").text
