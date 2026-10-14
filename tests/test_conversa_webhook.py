@@ -65,7 +65,7 @@ def test_resposta_do_lead_agenda_a_ia_e_ela_responde(client, db, lead, fake_ia, 
     assert responder_lead(lead.id, agora=depois()) == "respondeu"
     atual = ler(lead.id)
     assert (atual.status, atual.etapa, atual.responder_em) == (LeadStatus.EM_CONVERSA, "interesse", None)
-    assert evo.called("send_text")[-1][3] == "Oi! Aqui é a Bruna, da Brafort10."
+    assert evo.called("send_text")[-1][3] == "Aqui é a Bruna, da Brafort10."
 
 
 def test_mensagens_seguidas_viram_uma_resposta_so(client, db, lead, fake_ia, evo):

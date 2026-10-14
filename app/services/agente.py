@@ -13,6 +13,7 @@ As funções alteram a sessão mas não fazem commit; quem chama decide.
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -279,7 +280,8 @@ def instrucao_da_vez(etapa: str, pitch_em_sequencia: bool) -> str:
     """O que a IA deve entregar nesta resposta, dita de forma explícita (o modelo tende a adiantar etapas)."""
     if etapa == Etapa.ATENCAO:
         return ("NESTA RESPOSTA: entregue só a Atenção, em UMA mensagem, e pare para o lead responder. "
-                "Não fale ainda de produto, economia nem convite (etapa = atencao).")
+                "Você já cumprimentou na abertura: NÃO comece com \"Olá\", \"Oi\" nem outro cumprimento; reaja à resposta "
+                "do lead (ex.: \"Que bom!\") e se apresente. Não fale ainda de produto, economia nem convite (etapa = atencao).")
     if etapa == Etapa.INTERESSE and pitch_em_sequencia:
         return ("NESTA RESPOSTA: é a hora do pitch. Entregue Interesse, Desejo e Ação de uma vez, em TRÊS mensagens curtas "
                 "na lista `mensagens`, nessa ordem; a última termina com o convite/pergunta da Ação (etapa = acao). "
@@ -394,6 +396,17 @@ def _executar_ferramenta(db: Session, lead: Lead, nome: str, entrada: dict) -> t
     return f"Ferramenta desconhecida: {nome}", False
 
 
+_SAUDACAO = re.compile(r"^\s*(ol[aá]+|oi+e?|opa|e a[ií]|bom dia|boa tarde|boa noite)\b[\s!,.;:-]*", re.I)
+
+
+def sem_saudacao(texto: str) -> str:
+    """Tira o cumprimento do começo (a abertura já cumprimentou). "Olá! Que bom…" -> "Que bom…" """
+    resto = _SAUDACAO.sub("", texto, count=1)
+    if not resto or resto == texto:
+        return texto
+    return resto[0].upper() + resto[1:]
+
+
 def _avancar_etapa(lead: Lead, etapa: str) -> None:
     if etapa not in ETAPAS:
         return
@@ -472,6 +485,7 @@ def _finalizar(db: Session, lead: Lead, nome: str, entrada: dict) -> str:
             # Trava: na vez da Atenção a IA não pode adiantar o pitch. Se ela disse que foi além da Atenção,
             # sai só a primeira mensagem; se ficou na Atenção (às vezes em duas partes), saem as duas.
             mensagens = mensagens[:2] if etapa == Etapa.ATENCAO else mensagens[:1]
+            mensagens[0] = sem_saudacao(mensagens[0])
             etapa = Etapa.ATENCAO
         for texto in mensagens:
             # O "digitando…" de cada envio (2 a 8 s) separa as mensagens, como alguém escrevendo.

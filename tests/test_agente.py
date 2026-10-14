@@ -131,7 +131,7 @@ def test_primeira_resposta_segue_a_etapa_atencao(db, lead, fake_ia, evo):
     assert "Atenção  ← PRÓXIMA" in sistema and "Meu nome é Bruna" in sistema and "até 50%" in sistema
     assert fake_ia.chamadas[1]["messages"] == [{"role": "user", "content": "Bom dia, sim"}]
     (_, instance, number, enviado), = evo.called("send_text")
-    assert number == "5524999990001" and enviado.startswith("Olá! Sou a Bruna")
+    assert number == "5524999990001" and enviado.startswith("Sou a Bruna")  # sem o "Olá!" repetido
     assert (lead.etapa, lead.status) == (Etapa.INTERESSE, LeadStatus.EM_CONVERSA)
     envio = db.scalar(select(Envio).where(Envio.tipo == EnvioTipo.IA))
     assert envio.evolution_message_id and agente.eh_do_sistema(db, envio.evolution_message_id)
@@ -309,7 +309,7 @@ def test_trava_impede_adiantar_o_pitch_na_atencao(db, lead, fake_ia, evo):
     lead.segmento, lead.porte = "Pousadas", "pequeno"
     fake_ia.fila.append(resposta(ferramenta("responder", {"mensagens": ["Oi! Sou a Bruna.", "Temos produtos.", "Bora conversar?"], "etapa": "acao"})))
     agente.conversar(db, lead)
-    assert [c[3] for c in evo.called("send_text")] == ["Oi! Sou a Bruna."]
+    assert [c[3] for c in evo.called("send_text")] == ["Sou a Bruna."]
     assert lead.etapa == Etapa.INTERESSE  # o pitch fica para depois da resposta do lead
 
 
@@ -337,3 +337,26 @@ def test_formato_antigo_com_uma_mensagem_ainda_funciona(db, lead, fake_ia, evo):
     fake_ia.fila.append(resposta(ferramenta("responder", {"mensagem": "Oi!", "etapa": "atencao"})))
     assert agente.conversar(db, lead) == "respondeu"
     assert evo.called("send_text")[-1][3] == "Oi!"
+
+
+@pytest.mark.parametrize(
+    "texto, esperado",
+    [
+        ("Olá! Que bom falar com você. Meu nome é Bruna.", "Que bom falar com você. Meu nome é Bruna."),
+        ("Oi, tudo bem? Sou a Bruna.", "Tudo bem? Sou a Bruna."),
+        ("Bom dia! Aqui é a Bruna.", "Aqui é a Bruna."),
+        ("Que bom! Meu nome é Bruna.", "Que bom! Meu nome é Bruna."),
+        ("Olívia aqui", "Olívia aqui"),  # não é cumprimento
+        ("Olá!", "Olá!"),  # só o cumprimento: não sobra nada para mandar
+    ],
+)
+def test_sem_saudacao(texto, esperado):
+    assert agente.sem_saudacao(texto) == esperado
+
+
+def test_atencao_nao_cumprimenta_de_novo(db, lead, fake_ia, evo):
+    lead.segmento, lead.porte = "Pousadas", "pequeno"
+    fake_ia.fila.append(resposta(ferramenta("responder", {"mensagens": ["Olá! Que bom falar com você. Sou a Bruna, da Brafort10."], "etapa": "atencao"})))
+    agente.conversar(db, lead)
+    assert "NÃO comece com" in fake_ia.chamadas[0]["system"]
+    assert evo.called("send_text")[-1][3] == "Que bom falar com você. Sou a Bruna, da Brafort10."
