@@ -18,7 +18,7 @@ def conferir_conexoes() -> int:
 @celery_app.task(name="numeros.virada_do_dia")
 def virada_do_dia() -> None:
     with SessionLocal() as db:
-        svc.virada_do_dia(db)
+        svc.garantir_virada(db)
         db.commit()
 
 

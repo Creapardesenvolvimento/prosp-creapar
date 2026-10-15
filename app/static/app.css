@@ -85,6 +85,9 @@ button.perigo { background: var(--danger); }
 .botao.secundario, button.secundario { background: var(--surface); color: var(--accent); border: 1px solid var(--accent); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 .reuniao-dia { margin-top: 12px; }
+.diagnostico { margin-top: 8px; }
+.diagnostico .lista { margin: 4px 0 0; }
+.aviso-parado { background: #fff4e5; border: 1px solid #f0c98a; border-radius: 6px; padding: 8px 12px; margin: 0; }
 .reuniao-dia p { margin: 0 0 8px; }
 
 .alerta {

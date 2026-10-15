@@ -24,7 +24,8 @@ from app.models import (
     Reuniao,
     WhatsappNumber,
 )
-from app.services import ia
+from app.services import config_sistema, ia
+from app.services.agenda import como_utc
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +211,35 @@ def progresso(db: Session, campanha: Campanha) -> dict:
         "sem_numero": not conectados,
         "concluida": total > 0 and na_fila == 0,
         "vazia": total == 0,
+        "diagnostico": diagnostico(db, campanha) if campanha.status == CampanhaStatus.ATIVA and na_fila else None,
     }
+
+
+DIAS_CURTOS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
+
+
+def diagnostico(db: Session, campanha: Campanha, agora: datetime | None = None) -> dict:
+    """Explica por que a fila está (ou não) andando agora: horário e situação de cada número."""
+    from app.services.disparo import dentro_do_horario
+
+    agora = agora or datetime.now(timezone.utc)
+    regras = config_sistema.regras_disparo(db)
+    dias = ", ".join(DIAS_CURTOS[d] for d in sorted(regras.dias))
+    horario = f"{dias}, {regras.inicio:%H:%M}–{regras.fim:%H:%M}"
+    numeros = []
+    for n in sorted(campanha.numeros, key=lambda n: n.id):
+        if n.status != NumeroStatus.CONECTADO:
+            motivo = n.motivo_pausa if n.status == NumeroStatus.PAUSADO and n.motivo_pausa else ""
+            texto, ok = f"{n.status.replace('_', ' ')}{f' ({motivo})' if motivo else ''}: não envia", False
+        elif n.envios_hoje >= n.limite_diario_atual:
+            texto, ok = f"limite de hoje atingido ({n.envios_hoje}/{n.limite_diario_atual}): volta amanhã", False
+        elif n.proximo_envio_em and como_utc(n.proximo_envio_em) > agora:
+            proximo = como_utc(n.proximo_envio_em).astimezone(regras.tz)
+            texto, ok = f"{n.envios_hoje}/{n.limite_diario_atual} hoje · próximo envio às {proximo:%H:%M}", True
+        else:
+            texto, ok = f"{n.envios_hoje}/{n.limite_diario_atual} hoje · envia no próximo ciclo", True
+        numeros.append({"nome": n.nome_exibicao, "texto": texto, "ok": ok})
+    return {"no_horario": dentro_do_horario(regras, agora), "horario": horario, "numeros": numeros}
 
 
 def metricas(db: Session, campanha: Campanha) -> dict:

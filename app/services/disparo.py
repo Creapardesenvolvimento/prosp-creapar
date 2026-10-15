@@ -33,6 +33,7 @@ from app.models import (
 )
 from app.models.campanhas import campanha_numeros
 from app.services import campanhas, config_sistema
+from app.services import numeros as numeros_svc
 from app.services.agente import marcar_como_do_sistema
 from app.services.agenda import como_utc, utc
 from app.services.config_sistema import RegrasDisparo
@@ -212,6 +213,8 @@ def ciclo(db: Session, agora: datetime | None = None, rng: random.Random | None 
     """Uma rodada do disparo. Retorna quantas mensagens saíram. Faz commit a cada envio."""
     agora = utc(agora or datetime.now(timezone.utc))  # o SQLite descarta o fuso ao gravar
     rng = rng or random.Random()
+    if numeros_svc.garantir_virada(db, agora):
+        db.commit()
     regras = config_sistema.regras_disparo(db)
     if not dentro_do_horario(regras, agora):
         return 0

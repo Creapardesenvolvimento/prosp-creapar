@@ -24,6 +24,13 @@ SP = ZoneInfo("America/Sao_Paulo")
 SEGUNDA_9H = datetime(2026, 10, 12, 9, 0, tzinfo=SP)
 
 
+@pytest.fixture(autouse=True)
+def sem_virada(monkeypatch, request):
+    """Os testes do disparo ajustam os limites na mão; a virada automática tem testes próprios."""
+    if "virada" not in request.node.name:
+        monkeypatch.setattr(numeros, "garantir_virada", lambda db, agora=None: False)
+
+
 def criar_numero(db, server, nome, limite):
     numero, _ = numeros.criar_numero(db, nome, server)
     numeros.aplicar_estado(db, numero, "open")
@@ -289,3 +296,52 @@ def test_retomar_limpa_o_motivo_da_pausa(db, server, evo):
     evo.state = "open"
     numeros.retomar(db, numero)
     assert (numero.status, numero.motivo_pausa) == (NumeroStatus.CONECTADO, None)
+
+
+# --- virada do dia garantida pelo disparo -------------------------------------------
+
+
+def test_virada_perdida_a_meia_noite_acontece_no_ciclo(db, server, evo):
+    n = criar_numero(db, server, "Chip", 10)
+    n.data_ativacao = SEGUNDA_9H - timedelta(days=10)  # rampa: 40/dia
+    n.envios_hoje = 10  # preso no limite de ontem
+    c = criar_campanha(db, [n])
+    db.add(Lead(nome="Padaria A", telefone="+5519911110001", status=LeadStatus.NA_FILA, campanha_id=c.id))
+    db.commit()
+    assert disparo.ciclo(db, SEGUNDA_9H, random.Random(1)) == 1
+    db.refresh(n)
+    assert (n.envios_hoje, n.limite_diario_atual) == (1, 40)
+
+
+def test_virada_roda_uma_vez_e_conta_os_envios_de_hoje(db, server, evo):
+    n = criar_numero(db, server, "Chip", 10)
+    c = criar_campanha(db, [n])
+    lead = Lead(nome="A", telefone="+5519911110001", status=LeadStatus.ENVIADO, campanha_id=c.id)
+    db.add(lead)
+    db.flush()
+    db.add(Envio(lead_id=lead.id, campanha_id=c.id, numero_id=n.id, mensagem_id=c.mensagens[0].id, tipo="abertura",
+                 texto="x", status=EnvioStatus.ENVIADO, enviado_em=SEGUNDA_9H - timedelta(minutes=30)))
+    db.add(Envio(lead_id=lead.id, campanha_id=c.id, numero_id=n.id, mensagem_id=c.mensagens[0].id, tipo="abertura",
+                 texto="x", status=EnvioStatus.ENVIADO, enviado_em=SEGUNDA_9H - timedelta(days=1)))  # ontem
+    n.envios_hoje = 7
+    db.commit()
+    assert numeros.garantir_virada(db, SEGUNDA_9H) is True
+    assert n.envios_hoje == 1  # só o envio de hoje conta: rodar no meio do dia não devolve cota
+    n.envios_hoje = 5
+    assert numeros.garantir_virada(db, SEGUNDA_9H + timedelta(hours=2)) is False
+    assert n.envios_hoje == 5
+    assert numeros.garantir_virada(db, SEGUNDA_9H + timedelta(days=1)) is True
+
+
+def test_diagnostico_explica_por_que_parou(db, server):
+    a = criar_numero(db, server, "Chip A", 10)
+    b = criar_numero(db, server, "Chip B", 10)
+    a.envios_hoje = 10
+    b.status, b.motivo_pausa = NumeroStatus.PAUSADO, "taxa de resposta baixa"
+    c = criar_campanha(db, [a, b])
+    d = campanhas.diagnostico(db, c, SEGUNDA_9H)
+    assert d["no_horario"] is True
+    assert [x["ok"] for x in d["numeros"]] == [False, False]
+    assert "limite de hoje atingido (10/10)" in d["numeros"][0]["texto"]
+    assert "pausado (taxa de resposta baixa)" in d["numeros"][1]["texto"]
+    assert campanhas.diagnostico(db, c, SEGUNDA_9H.replace(hour=20))["no_horario"] is False

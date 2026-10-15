@@ -35,6 +35,20 @@
     {% if p.dias_restantes == 0 %}Previsão: a fila termina hoje.
     {% elif p.dias_restantes %}Previsão: mais {{ p.dias_restantes }} dia(s) útil(eis) depois de hoje.{% endif %}
   </p>
+  {% if p.diagnostico %}{% set d = p.diagnostico %}
+  <div class="diagnostico">
+    {% if not d.no_horario %}
+    <p class="aviso-parado">⏸ Fora do horário de disparo ({{ d.horario }}). A fila volta a andar no próximo horário comercial.</p>
+    {% elif not d.numeros|selectattr("ok")|list %}
+    <p class="aviso-parado">⏸ Nenhum número da campanha pode enviar agora. Veja abaixo.</p>
+    {% endif %}
+    <ul class="lista">
+      {% for n in d.numeros %}
+      <li><strong>{{ n.nome }}</strong>: <span class="{{ '' if n.ok else 'erro' }}">{{ n.texto }}</span></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
   {% endif %}
   {% endif %}
 </div>

@@ -8,6 +8,7 @@ import re
 import secrets
 import unicodedata
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -16,7 +17,7 @@ from app.config import get_settings
 from app.integrations import chatwoot, evolution
 from app.integrations.chatwoot import ChatwootError
 from app.integrations.evolution import EvolutionError
-from app.models import EvolutionServer, NumeroStatus, WhatsappNumber
+from app.models import Envio, EnvioStatus, EnvioTipo, EvolutionServer, NumeroStatus, WhatsappNumber
 from app.services import config_sistema
 from app.services.rampa import limite_do_numero
 
@@ -311,11 +312,40 @@ def conferir_conexoes(db: Session) -> int:
     return mudancas
 
 
-def virada_do_dia(db: Session) -> None:
-    """Zera os envios do dia e recalcula o limite de cada número pela rampa."""
-    agora = datetime.now(timezone.utc)
+def virada_do_dia(db: Session, agora: datetime | None = None) -> None:
+    """Recalcula os envios de hoje e o limite de cada número pela rampa.
+
+    Os envios de hoje são contados nas aberturas enviadas desde a meia-noite (fuso do sistema),
+    então rodar de novo no mesmo dia não devolve cota que já foi usada.
+    """
+    agora = agora or datetime.now(timezone.utc)
+    tz = ZoneInfo(get_settings().timezone)
+    meia_noite = agora.astimezone(tz).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    enviados = dict(
+        db.execute(
+            select(Envio.numero_id, func.count())
+            .where(Envio.tipo == EnvioTipo.ABERTURA, Envio.status == EnvioStatus.ENVIADO, Envio.enviado_em >= meia_noite)
+            .group_by(Envio.numero_id)
+        ).all()
+    )
     rampa = config_sistema.rampa(db)
     for numero in db.scalars(select(WhatsappNumber).where(WhatsappNumber.status.in_(MONITORADOS))):
-        numero.envios_hoje = 0
+        numero.envios_hoje = enviados.get(numero.id, 0)
         numero.limite_diario_atual = limite_do_numero(numero.data_ativacao, agora, rampa)
     logger.info("virada do dia: limites recalculados")
+
+
+def garantir_virada(db: Session, agora: datetime | None = None) -> bool:
+    """Faz a virada se ela ainda não rodou hoje. Retorna True se rodou agora.
+
+    O beat agenda a virada para meia-noite, mas se ele estiver reiniciando nessa hora (deploy)
+    a tarefa se perde e os números ficariam presos no limite de ontem. O disparo chama isto a cada ciclo.
+    """
+    from app.services.idempotency import register_event
+
+    agora = agora or datetime.now(timezone.utc)
+    hoje = agora.astimezone(ZoneInfo(get_settings().timezone)).date().isoformat()
+    if not register_event(db, "virada-do-dia", hoje):
+        return False
+    virada_do_dia(db, agora)
+    return True
