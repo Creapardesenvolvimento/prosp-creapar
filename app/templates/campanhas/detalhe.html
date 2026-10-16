@@ -29,6 +29,8 @@
   <div><strong>{{ m.taxa_resposta }}%</strong><small>taxa de resposta</small></div>
   <div><strong>{{ m.reunioes }}</strong><small>reuniões</small></div>
   <div><strong>{{ m.opt_outs }}</strong><small>opt-outs</small></div>
+  <div><strong>{{ m.followups }}</strong><small>follow-ups enviados</small></div>
+  <div><strong>{{ m.sem_resposta }}</strong><small>sem resposta</small></div>
   {% if m.falhas %}<div><strong>{{ m.falhas }}</strong><small>falhas de envio</small></div>{% endif %}
 </div>
 
@@ -58,6 +60,44 @@
     <button type="submit">Gerar 10 variações com IA</button>
     <small class="muted">Usa o nicho e a oferta da campanha.</small>
   </form>
+</div>
+
+<div class="card" id="followup">
+  <h2>Follow-up automático</h2>
+  {% if fu.ativo %}
+  <p class="muted">Quem não responder recebe {{ fu.passos|length }} follow-up(s), pelo mesmo número da primeira mensagem, no horário de disparo.
+    Respondeu, sai do follow-up. Dias e liga/desliga em <a href="/config">Configurações</a>.</p>
+  {% else %}
+  <p class="erro">Follow-up desligado em <a href="/config">Configurações</a>.</p>
+  {% endif %}
+  {% for f in fu.passos %}
+  <div class="passo-followup">
+    <h3>{{ f.passo }}º follow-up · dia {{ f.dia }} <small class="muted">({{ f.papel }})</small></h3>
+    {% if f.proprios %}
+    <ul class="lista">
+      {% for item in f.proprios %}
+      <li>{{ item.texto }}
+        <form method="post" action="/campanhas/{{ c.id }}/followups/{{ item.id }}/remover"><button class="link">remover</button></form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">Usando os textos de fábrica:</p>
+    <ul class="lista muted">{% for t in f.fabrica %}<li>{{ t }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% if fu.passos %}
+  <form method="post" action="/campanhas/{{ c.id }}/followups" class="form">
+    <label>Passo
+      <select name="passo">{% for f in fu.passos %}<option value="{{ f.passo }}">{{ f.passo }}º follow-up (dia {{ f.dia }})</option>{% endfor %}</select>
+    </label>
+    <label>Texto próprio (substitui os de fábrica deste passo)
+      <textarea name="texto" rows="2" required placeholder="Oi! Conseguiu ver minha mensagem sobre a {empresa}?"></textarea>
+    </label>
+    <button type="submit">Adicionar variação</button>
+  </form>
+  {% endif %}
 </div>
 
 <div class="card" id="numeros">

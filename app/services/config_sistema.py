@@ -29,7 +29,7 @@ class Campo:
     chave: str
     grupo: str
     rotulo: str
-    tipo: str  # dias | hora | inteiro | decimal | rampa | texto (sem espaços) | frase | simnao | telefone (opcional)
+    tipo: str  # dias | hora | inteiro | decimal | rampa | texto (sem espaços) | frase | simnao | telefone (opcional) | lista_dias
     ajuda: str = ""
     minimo: float | None = None
     maximo: float | None = None
@@ -56,6 +56,11 @@ CAMPOS = [
     Campo("reuniao_buffer_minutos", "Agenda", "Intervalo entre reuniões (minutos)", "inteiro", "", 0, 120),
     Campo("agenda_antecedencia_horas", "Agenda", "Antecedência mínima (horas)", "inteiro", "", 0, 72),
     Campo("agenda_dias_a_frente", "Agenda", "Oferecer horários até quantos dias à frente", "inteiro", "", 1, 60),
+    Campo("followup_ativo", "Follow-up", "Mandar follow-up para quem não respondeu", "simnao",
+          "Sai pelo mesmo número da primeira mensagem, no horário de disparo e dentro do limite diário do número."),
+    Campo("followup_dias", "Follow-up", "Dias do follow-up depois da primeira mensagem", "lista_dias",
+          "Separados por vírgula, em ordem. Ex.: 2,5,10 = três follow-ups. Sem resposta 3 dias depois do último, "
+          "o lead vira \"sem resposta\"."),
     Campo("notificar_telefone", "Notificações", "WhatsApp que recebe as notificações de reunião", "telefone",
           "Recebe cada reunião agendada ou cancelada e o resumo do dia. Não use um dos números de prospecção. "
           "Vazio desliga."),
@@ -73,6 +78,27 @@ CAMPOS = [
           "Junta as mensagens que o lead manda em sequência numa resposta só.", 3, 120),
 ]
 CAMPOS_POR_CHAVE = {c.chave: c for c in CAMPOS}
+
+
+def parse_dias_followup(texto: str) -> list[int]:
+    """ "2, 5, 10" -> [2, 5, 10]. Levanta ValueError com a explicação."""
+    try:
+        dias = [int(parte) for parte in str(texto).replace(" ", "").split(",") if parte]
+    except ValueError:
+        raise ValueError("use números separados por vírgula, ex.: 2,5,10") from None
+    if not dias:
+        raise ValueError("informe pelo menos um dia, ex.: 2,5,10")
+    if len(dias) > 5:
+        raise ValueError("no máximo 5 follow-ups")
+    if any(d < 1 or d > 60 for d in dias):
+        raise ValueError("cada dia precisa estar entre 1 e 60")
+    if any(b <= a for a, b in zip(dias, dias[1:])):
+        raise ValueError("os dias precisam estar em ordem crescente, ex.: 2,5,10")
+    return dias
+
+
+def formatar_dias_followup(dias: list[int]) -> str:
+    return ",".join(str(d) for d in dias)
 
 
 def padroes() -> dict:
@@ -96,6 +122,8 @@ def padroes() -> dict:
         "empresa_nome": "Brafort10",
         "atendente_nome": "Bruna",
         "economia_texto": "até 50%",
+        "followup_ativo": True,
+        "followup_dias": "2,5,10",
         "notificar_telefone": "",
         "avisar_vendedor": True,
         "resumo_automatico": False,
@@ -127,6 +155,11 @@ def _converter(campo: Campo, bruto) -> object:
         return f"{hora:02d}:{minuto:02d}"
     if campo.tipo == "simnao":
         return bruto in (True, "1", "on", "sim", "true")
+    if campo.tipo == "lista_dias":
+        try:
+            return formatar_dias_followup(parse_dias_followup(texto))
+        except ValueError as exc:
+            raise ConfigError(f"{campo.rotulo}: {exc}") from None
     if campo.tipo == "telefone":
         if not texto:
             return ""

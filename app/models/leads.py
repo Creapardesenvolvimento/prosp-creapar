@@ -73,6 +73,8 @@ class Lead(Base):
     tentativas_envio: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     enviado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     respondeu_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    followups_enviados: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    ultimo_followup_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Agente de IA
     segmento: Mapped[str | None] = mapped_column(String(120))
     porte: Mapped[str | None] = mapped_column(String(10))

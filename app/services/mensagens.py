@@ -144,7 +144,7 @@ def registrar_recebida(db: Session, payload: dict) -> Lead | None:
     )
     if lead.respondeu_em is None:
         lead.respondeu_em = agora
-    if lead.status == LeadStatus.ENVIADO:
+    if lead.status in (LeadStatus.ENVIADO, LeadStatus.SEM_RESPOSTA):  # respondeu ao follow-up, mesmo depois do último
         lead.status = LeadStatus.RESPONDEU
 
     if lead.status != LeadStatus.OPT_OUT and eh_opt_out(texto):

@@ -1,4 +1,4 @@
-from app.models.campanhas import Campanha, CampanhaMensagem, CampanhaStatus, Envio, EnvioStatus, EnvioTipo
+from app.models.campanhas import Campanha, CampanhaFollowup, CampanhaMensagem, CampanhaStatus, Envio, EnvioStatus, EnvioTipo
 from app.models.config import Configuracao
 from app.models.empresas import Empresa
 from app.models.mensagens import Autor, Direcao, Mensagem

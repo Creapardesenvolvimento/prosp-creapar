@@ -32,7 +32,7 @@ from app.models import (
     WhatsappNumber,
 )
 from app.models.campanhas import campanha_numeros
-from app.services import campanhas, config_sistema
+from app.services import campanhas, config_sistema, followup
 from app.services import numeros as numeros_svc
 from app.services.agente import marcar_como_do_sistema
 from app.services.agenda import como_utc, utc
@@ -215,6 +215,9 @@ def ciclo(db: Session, agora: datetime | None = None, rng: random.Random | None 
     rng = rng or random.Random()
     if numeros_svc.garantir_virada(db, agora):
         db.commit()
+    followup_ativo, dias_followup = followup.regras(db)
+    if followup_ativo and followup.encerrar_sem_resposta(db, agora, dias_followup):
+        db.commit()
     regras = config_sistema.regras_disparo(db)
     if not dentro_do_horario(regras, agora):
         return 0
@@ -223,10 +226,15 @@ def ciclo(db: Session, agora: datetime | None = None, rng: random.Random | None 
         if conferir_taxa_de_resposta(db, numero, regras, agora):
             db.commit()
             continue
-        lead = reservar_lead(db, numero)
-        if lead is None:
-            continue
-        envio = enviar_abertura(db, numero, lead, agora, rng)
+        # Follow-up vencido tem a vez: quem já recebeu a abertura deste número vem antes de lead novo.
+        lead = followup.lead_para_followup(db, numero, agora, dias_followup) if followup_ativo else None
+        if lead is not None:
+            envio = followup.enviar_followup(db, numero, lead, agora, rng, dias_followup)
+        else:
+            lead = reservar_lead(db, numero)
+            if lead is None:
+                continue
+            envio = enviar_abertura(db, numero, lead, agora, rng)
         if envio is not None and envio.status == EnvioStatus.ENVIADO:
             enviados += 1
             numero.proximo_envio_em = agora + timedelta(seconds=proximo_intervalo(regras, numero, agora, rng))

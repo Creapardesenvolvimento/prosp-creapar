@@ -168,3 +168,6 @@ textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--border); bo
 .legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
 .concluida { background: #dcf5e3; border: 1px solid #a8dfb8; border-radius: 8px; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
 .card.progresso { margin-bottom: 16px; }
+
+.passo-followup { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; }
+.passo-followup h3 { font-size: 14px; margin: 0 0 6px; }

@@ -12,6 +12,7 @@ from app.models import (
     Busca,
     BuscaStatus,
     Campanha,
+    CampanhaFollowup,
     CampanhaMensagem,
     Lead,
     LeadStatus,
@@ -20,7 +21,7 @@ from app.models import (
     WhatsappNumber,
 )
 from app.services import campanhas as svc
-from app.services import config_sistema
+from app.services import config_sistema, followup
 from app.services.campanhas import CampanhaError
 from app.services.config_sistema import CAMPOS, ConfigError
 from app.services.ia import IAError
@@ -74,6 +75,22 @@ async def criar(request: Request, db: Session = Depends(get_db), user: User = De
     return RedirectResponse(f"/campanhas/{campanha.id}", status_code=303)
 
 
+def _followup(db: Session, campanha: Campanha) -> dict:
+    ativo, dias = followup.regras(db)
+    rotulos = {"lembrete": "lembrete", "retomada": "retomada", "despedida": "despedida"}
+    passos = [
+        {
+            "passo": i,
+            "dia": dia,
+            "papel": rotulos[followup.papel_do_passo(i, len(dias))],
+            "proprios": [f for f in campanha.followups if f.passo == i],
+            "fabrica": followup.textos_de_fabrica(db, i, len(dias)),
+        }
+        for i, dia in enumerate(dias, 1)
+    ]
+    return {"ativo": ativo, "passos": passos}
+
+
 @router.get("/campanhas/{campanha_id}")
 def detalhe(campanha_id: int, request: Request, erro: str | None = None, ok: str | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
     campanha = _campanha(db, campanha_id)
@@ -99,6 +116,7 @@ def detalhe(campanha_id: int, request: Request, erro: str | None = None, ok: str
             "atualizar": True,
             "numeros": numeros,
             "selecionados": {n.id for n in campanha.numeros},
+            "fu": _followup(db, campanha),
             "buscas": [(b, disponiveis.get(b.id, 0)) for b in buscas],
             "erro": erro,
             "ok": ok,
@@ -161,6 +179,29 @@ def remover_mensagem(campanha_id: int, mensagem_id: int, db: Session = Depends(g
     svc.remover_mensagem(db, mensagem)
     db.commit()
     return _voltar(campanha_id, ancora="#mensagens")
+
+
+@router.post("/campanhas/{campanha_id}/followups")
+async def adicionar_followup(campanha_id: int, request: Request, db: Session = Depends(get_db)):
+    campanha = _campanha(db, campanha_id)
+    form = await request.form()
+    try:
+        svc.adicionar_followup(db, campanha, int(form.get("passo") or 0), form.get("texto", ""))
+    except (CampanhaError, ValueError) as exc:
+        db.rollback()
+        return _voltar(campanha_id, str(exc) if isinstance(exc, CampanhaError) else "Escolha o passo.", "#followup")
+    db.commit()
+    return _voltar(campanha_id, ancora="#followup")
+
+
+@router.post("/campanhas/{campanha_id}/followups/{followup_id}/remover")
+def remover_followup(campanha_id: int, followup_id: int, db: Session = Depends(get_db)):
+    item = db.get(CampanhaFollowup, followup_id)
+    if item is None or item.campanha_id != campanha_id:
+        raise HTTPException(status_code=404)
+    db.delete(item)  # o histórico fica nos envios (o texto vai junto em cada um)
+    db.commit()
+    return _voltar(campanha_id, ancora="#followup")
 
 
 @router.post("/campanhas/{campanha_id}/numeros")

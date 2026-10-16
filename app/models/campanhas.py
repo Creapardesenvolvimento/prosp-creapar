@@ -53,6 +53,9 @@ class Campanha(Base):
         back_populates="campanha", cascade="all, delete-orphan", order_by="CampanhaMensagem.id"
     )
     numeros: Mapped[list[WhatsappNumber]] = relationship(secondary=campanha_numeros, order_by=WhatsappNumber.id)
+    followups: Mapped[list["CampanhaFollowup"]] = relationship(
+        cascade="all, delete-orphan", order_by="(CampanhaFollowup.passo, CampanhaFollowup.id)"
+    )
 
 
 class CampanhaMensagem(Base):
@@ -68,6 +71,18 @@ class CampanhaMensagem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     campanha: Mapped[Campanha] = relationship(back_populates="mensagens")
+
+
+class CampanhaFollowup(Base):
+    """Variação de texto de um passo do follow-up (1 = primeiro). Sem variação, valem os textos de fábrica."""
+
+    __tablename__ = "campanha_followups"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campanha_id: Mapped[int] = mapped_column(ForeignKey("campanhas.id", ondelete="CASCADE"), index=True)
+    passo: Mapped[int] = mapped_column(Integer)
+    texto: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Envio(Base):

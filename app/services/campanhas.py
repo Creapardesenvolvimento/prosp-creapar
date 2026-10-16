@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     Blacklist,
     Campanha,
+    CampanhaFollowup,
     CampanhaMensagem,
     CampanhaStatus,
     Envio,
@@ -68,6 +69,16 @@ def adicionar_mensagem(db: Session, campanha: Campanha, texto: str, origem: str 
     db.add(mensagem)
     db.flush()
     return mensagem
+
+
+def adicionar_followup(db: Session, campanha: Campanha, passo: int, texto: str) -> CampanhaFollowup:
+    if passo < 1 or passo > 5:
+        raise CampanhaError("Passo do follow-up inválido.")
+    followup = CampanhaFollowup(campanha_id=campanha.id, passo=passo, texto=validar_texto(texto))
+    db.add(followup)
+    db.flush()
+    db.refresh(campanha)
+    return followup
 
 
 def remover_mensagem(db: Session, mensagem: CampanhaMensagem) -> None:
@@ -264,6 +275,13 @@ def metricas(db: Session, campanha: Campanha) -> dict:
             )
         )
         or 0,
+        "followups": db.scalar(
+            select(func.count())
+            .select_from(Envio)
+            .where(Envio.campanha_id == campanha.id, Envio.tipo == EnvioTipo.FOLLOW_UP, Envio.status == EnvioStatus.ENVIADO)
+        )
+        or 0,
+        "sem_resposta": contar(Lead.status == LeadStatus.SEM_RESPOSTA),
         "respostas": respostas,
         "taxa_resposta": round(100 * respostas / enviados, 1) if enviados else 0.0,
         "opt_outs": contar(Lead.status == LeadStatus.OPT_OUT),
