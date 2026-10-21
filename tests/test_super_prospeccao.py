@@ -10,7 +10,12 @@ from app.models import Envio, EnvioStatus, EnvioTipo, Lead, LeadStatus, NumeroSt
 from app.services import alertas, campanhas, config_sistema, disparo, numeros, prospeccao
 from app.services.agenda import utc
 from app.services.campanhas import CampanhaError
-from tests.test_disparo import SEGUNDA_9H, criar_campanha, criar_leads, criar_numero
+from tests.test_disparo import SEGUNDA_9H, criar_leads, criar_numero
+from tests.test_disparo import criar_campanha as criar_normal
+
+
+def criar_campanha(db, nums, **kw):
+    return criar_normal(db, nums, **{"modo": "super", **kw})
 
 NOTIFICACOES = "+5511988887777"
 
@@ -29,7 +34,7 @@ def aberturas(db):
 
 def registrar_envios(db, numero, lead, quantidade, quando, tipo=EnvioTipo.ABERTURA):
     for i in range(quantidade):
-        db.add(Envio(lead_id=lead.id, numero_id=numero.id, tipo=tipo, texto="x", status=EnvioStatus.ENVIADO,
+        db.add(Envio(lead_id=lead.id, campanha_id=lead.campanha_id, numero_id=numero.id, tipo=tipo, texto="x", status=EnvioStatus.ENVIADO,
                      enviado_em=utc(quando - timedelta(minutes=i))))  # o SQLite descarta o fuso
     db.commit()
 
@@ -62,7 +67,8 @@ def test_disparo_sorteia_as_variacoes(db, server, evo):
 
 def test_teto_por_numero_limita_a_rampa(db):
     config_sistema.salvar(db, {"rampa": "1:10,8:40,22:150", "teto_por_numero": "30"})
-    assert config_sistema.rampa(db) == [(1, 10), (8, 30), (22, 30)]
+    assert config_sistema.rampa_super(db) == [(1, 10), (8, 30), (22, 30)]
+    assert config_sistema.rampa(db) == [(1, 10), (8, 40), (22, 150)]  # campanha normal: sem teto
 
 
 def test_meta_do_dia_reparte_entre_os_numeros(db, server, evo):
@@ -220,7 +226,7 @@ def test_puxar_todos_os_numeros(db, server, evo):
     banido = criar_numero(db, server, "Chip C", 10)
     banido.status = NumeroStatus.BANIDO
     db.commit()
-    with pytest.raises(ProspeccaoError, match="Nenhuma campanha ativa"):
+    with pytest.raises(ProspeccaoError, match="Nenhuma campanha de super"):
         prospeccao.puxar_numeros(db)
 
     c1 = criar_campanha(db, [a])
@@ -246,3 +252,58 @@ def test_botao_puxar_numeros(logged_client, db, server, evo):
     assert "ok=" in resp.headers["location"] and evo.called("connection_state")
     pagina = logged_client.get("/prospeccao").text
     assert "Chip B" in pagina and "fora das campanhas" not in pagina
+
+
+# --- campanha normal × super prospecção ----------------------------------------------
+
+
+def test_campanha_normal_ignora_a_meta_e_o_maximo_por_hora(db, server, evo):
+    nums = [criar_numero(db, server, f"Chip {i}", 50) for i in range(3)]
+    c = criar_normal(db, nums)
+    lead, *_ = criar_leads(db, c, 10)
+    config_sistema.salvar(db, {"meta_diaria": "1", "limite_hora_numero": "1"})
+    registrar_envios(db, nums[0], lead, 1, SEGUNDA_9H - timedelta(minutes=5))
+    assert disparo.ciclo(db, SEGUNDA_9H, random.Random(1)) == 3
+
+
+def test_meta_batida_para_so_a_super(db, server, evo):
+    so_normal = criar_numero(db, server, "Normal", 50)
+    so_super = criar_numero(db, server, "Super", 50)
+    nos_dois = criar_numero(db, server, "Os dois", 50)
+    normal = criar_normal(db, [so_normal, nos_dois])
+    super_ = criar_campanha(db, [so_super, nos_dois])
+    criar_leads(db, normal, 5)
+    lead_super, *_ = criar_leads(db, super_, 5, inicio=100)
+    config_sistema.salvar(db, {"meta_diaria": "1"})
+    registrar_envios(db, so_super, lead_super, 1, SEGUNDA_9H - timedelta(minutes=5))  # a meta da super já saiu
+    assert disparo.ciclo(db, SEGUNDA_9H, random.Random(1)) == 2
+    novos = db.execute(
+        select(Envio.numero_id, Lead.campanha_id).join(Lead, Lead.id == Envio.lead_id).where(Envio.texto != "x")
+    ).all()
+    assert sorted(novos) == sorted([(so_normal.id, normal.id), (nos_dois.id, normal.id)])
+
+
+def test_virada_aplica_o_teto_so_na_super(db, server, evo):
+    a = criar_numero(db, server, "Normal", 10)
+    b = criar_numero(db, server, "Super", 10)
+    criar_normal(db, [a])
+    criar_campanha(db, [b])
+    for n in (a, b):
+        n.data_ativacao = utc(SEGUNDA_9H - timedelta(days=40))
+    config_sistema.salvar(db, {"rampa": "1:10,31:150", "teto_por_numero": "50"})
+    db.commit()
+    numeros.virada_do_dia(db, SEGUNDA_9H)
+    assert (a.limite_diario_atual, b.limite_diario_atual) == (150, 50)
+
+
+def test_tipo_da_campanha_no_formulario(logged_client, db, server, evo):
+    assert "Super prospecção" in logged_client.get("/campanhas/nova").text
+    resp = logged_client.post("/campanhas", data={"nome": "Volume", "modo": "super"})
+    caminho = resp.headers["location"]
+    pagina = logged_client.get(caminho).text
+    assert "status modo-super" in pagina
+    assert "modo-super" in logged_client.get("/campanhas").text
+    logged_client.post(caminho, data={"nome": "Volume", "modo": "normal"})
+    assert "status modo-super" not in logged_client.get(caminho).text
+    resp = logged_client.post("/campanhas", data={"nome": "X", "modo": "turbo"})
+    assert resp.status_code == 400

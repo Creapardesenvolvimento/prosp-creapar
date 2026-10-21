@@ -65,6 +65,7 @@ def nova(request: Request, user: User = Depends(current_user)):
 async def criar(request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
     form = await request.form()
     dados = {k: form.get(k, "") for k in ("nome", "nicho", "oferta", "prompt_agente")}
+    dados["modo"] = form.get("modo", "normal")
     try:
         campanha = svc.salvar(db, None, **dados)
     except CampanhaError as exc:
@@ -138,11 +139,13 @@ def progresso(campanha_id: int, request: Request, db: Session = Depends(get_db))
 async def atualizar(campanha_id: int, request: Request, db: Session = Depends(get_db)):
     campanha = _campanha(db, campanha_id)
     form = await request.form()
+    dados = {k: form.get(k, "") for k in ("nome", "nicho", "oferta", "prompt_agente")}
     try:
-        svc.salvar(db, campanha, **{k: form.get(k, "") for k in ("nome", "nicho", "oferta", "prompt_agente")})
+        svc.salvar(db, campanha, **dados, modo=form.get("modo") or None)
     except CampanhaError as exc:
         db.rollback()
         return _voltar(campanha_id, str(exc))
+    recalcular_limites(db)  # o tipo muda o teto dos números da campanha
     db.commit()
     return _voltar(campanha_id, ancora="#dados")
 
@@ -210,6 +213,7 @@ async def definir_numeros(campanha_id: int, request: Request, db: Session = Depe
     campanha = _campanha(db, campanha_id)
     form = await request.form()
     svc.definir_numeros(db, campanha, [int(v) for v in form.getlist("numero_id")])
+    recalcular_limites(db)
     db.commit()
     return _voltar(campanha_id, ancora="#numeros")
 
@@ -238,6 +242,7 @@ def acao(campanha_id: int, acao: str, db: Session = Depends(get_db)):
     except CampanhaError as exc:
         db.rollback()
         return _voltar(campanha_id, str(exc))
+    recalcular_limites(db)  # número que sai (ou entra) de uma super prospecção ativa muda de teto
     db.commit()
     return _voltar(campanha_id)
 

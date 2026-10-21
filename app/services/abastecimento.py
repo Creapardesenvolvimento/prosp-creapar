@@ -103,11 +103,13 @@ def alvo_de_estoque(db: Session) -> int:
 
 
 def na_fila(db: Session) -> int:
+    """Leads na fila das campanhas que o plano abastece."""
+    do_plano = select(PlanoBusca.campanha_id).where(PlanoBusca.ativo, PlanoBusca.campanha_id.is_not(None))
     return db.scalar(
         select(func.count())
         .select_from(Lead)
         .join(Campanha, Campanha.id == Lead.campanha_id)
-        .where(Lead.status == LeadStatus.NA_FILA, Campanha.status != CampanhaStatus.ENCERRADA)
+        .where(Lead.status == LeadStatus.NA_FILA, Campanha.status != CampanhaStatus.ENCERRADA, Campanha.id.in_(do_plano))
     ) or 0
 
 

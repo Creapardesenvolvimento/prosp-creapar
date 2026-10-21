@@ -41,6 +41,25 @@ class NumeroError(Exception):
     pass
 
 
+def ids_em_super_prospeccao(db: Session) -> set[int]:
+    """Números ligados a alguma campanha de super prospecção ativa: seguem o teto e o máximo por hora dela."""
+    from app.models import Campanha, CampanhaModo, CampanhaStatus
+    from app.models.campanhas import campanha_numeros
+
+    return set(
+        db.scalars(
+            select(campanha_numeros.c.numero_id)
+            .join(Campanha, Campanha.id == campanha_numeros.c.campanha_id)
+            .where(Campanha.status == CampanhaStatus.ATIVA, Campanha.modo == CampanhaModo.SUPER)
+        )
+    )
+
+
+def rampa_do_numero(db: Session, numero: WhatsappNumber, em_super: set[int] | None = None):
+    em_super = ids_em_super_prospeccao(db) if em_super is None else em_super
+    return config_sistema.rampa_super(db) if numero.id in em_super else config_sistema.rampa(db)
+
+
 def webhook_url() -> str:
     settings = get_settings()
     return f"{settings.public_base_url.rstrip('/')}/webhooks/evolution/{settings.webhook_token}"
@@ -176,7 +195,7 @@ def _ao_conectar(db: Session, numero: WhatsappNumber) -> None:
         # Chip novo (ou outro chip lido na reconexão): a rampa começa do dia 1.
         numero.data_ativacao = datetime.now(timezone.utc)
         numero.envios_hoje = 0
-    numero.limite_diario_atual = limite_do_numero(numero.data_ativacao, rampa=config_sistema.rampa(db))
+    numero.limite_diario_atual = limite_do_numero(numero.data_ativacao, rampa=rampa_do_numero(db, numero))
     numero.status = NumeroStatus.CONECTADO
     numero.motivo_desconexao = None
     logger.info(
@@ -386,10 +405,10 @@ def virada_do_dia(db: Session, agora: datetime | None = None) -> None:
             .group_by(Envio.numero_id)
         ).all()
     )
-    rampa = config_sistema.rampa(db)
+    normal, super_, em_super = config_sistema.rampa(db), config_sistema.rampa_super(db), ids_em_super_prospeccao(db)
     for numero in db.scalars(select(WhatsappNumber).where(WhatsappNumber.status.in_(MONITORADOS))):
         numero.envios_hoje = enviados.get(numero.id, 0)
-        numero.limite_diario_atual = limite_do_numero(numero.data_ativacao, agora, rampa)
+        numero.limite_diario_atual = limite_do_numero(numero.data_ativacao, agora, super_ if numero.id in em_super else normal)
     logger.info("virada do dia: limites recalculados")
 
 

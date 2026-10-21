@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models import (
     Campanha,
+    CampanhaModo,
     CampanhaStatus,
     EnvioTipo,
     Lead,
@@ -32,11 +33,11 @@ HORIZONTE_DIAS = 60
 
 
 def numeros_da_prospeccao(db: Session) -> list[WhatsappNumber]:
-    """Números ligados a alguma campanha ativa (em qualquer situação, menos removidos)."""
+    """Números ligados a alguma campanha de super prospecção ativa (em qualquer situação, menos removidos)."""
     em_campanha_ativa = (
         select(campanha_numeros.c.numero_id)
         .join(Campanha, Campanha.id == campanha_numeros.c.campanha_id)
-        .where(Campanha.status == CampanhaStatus.ATIVA)
+        .where(Campanha.status == CampanhaStatus.ATIVA, Campanha.modo == CampanhaModo.SUPER)
     )
     return list(
         db.scalars(
@@ -57,14 +58,19 @@ def numeros_cadastrados(db: Session) -> list[WhatsappNumber]:
 
 
 def puxar_numeros(db: Session) -> tuple[int, int]:
-    """Coloca todos os números cadastrados em todas as campanhas ativas. Retorna (campanhas, números novos nelas).
+    """Coloca todos os números cadastrados nas campanhas de super prospecção ativas. Retorna (campanhas, números novos nelas).
 
     Quem não está conectado entra também: o disparo só usa os conectados, então ele passa a enviar
     sozinho assim que conectar.
     """
-    ativas = db.scalars(select(Campanha).where(Campanha.status == CampanhaStatus.ATIVA)).all()
+    ativas = db.scalars(
+        select(Campanha).where(Campanha.status == CampanhaStatus.ATIVA, Campanha.modo == CampanhaModo.SUPER)
+    ).all()
     if not ativas:
-        raise ProspeccaoError("Nenhuma campanha ativa para receber os números. Ative uma campanha primeiro.")
+        raise ProspeccaoError(
+            "Nenhuma campanha de super prospecção ativa para receber os números. "
+            "Em Campanhas, escolha o tipo Super prospecção e ative a campanha."
+        )
     disponiveis = numeros_cadastrados(db)
     adicionados = set()
     for campanha in ativas:
@@ -111,18 +117,24 @@ def painel(db: Session, agora: datetime | None = None) -> dict:
     agora = utc(agora or datetime.now(timezone.utc))
     regras = config_sistema.regras_disparo(db)
     volume = config_sistema.regras_volume(db)
-    rampa = config_sistema.rampa(db)
+    rampa = config_sistema.rampa_super(db)
+    super_ids = disparo.campanhas_super_ativas(db)
     meta = volume.meta_diaria
     meia_noite = disparo.inicio_do_dia(regras, agora)
     hora_atras = agora - timedelta(hours=1)
 
-    aberturas_hoje = disparo.contar_envios(db, meia_noite)
+    aberturas_hoje = disparo.contar_envios(db, meia_noite, campanhas=super_ids)
+    leads_super = select(Lead.id).where(Lead.campanha_id.in_(super_ids))
     hoje = {
         "aberturas": aberturas_hoje,
-        "followups": disparo.contar_envios(db, meia_noite, (EnvioTipo.FOLLOW_UP,)),
-        "ultima_hora": disparo.contar_envios(db, hora_atras),
-        "respostas": db.scalar(select(func.count()).select_from(Lead).where(Lead.respondeu_em >= utc(meia_noite))) or 0,
-        "reunioes": db.scalar(select(func.count()).select_from(Reuniao).where(Reuniao.created_at >= utc(meia_noite))) or 0,
+        "followups": disparo.contar_envios(db, meia_noite, (EnvioTipo.FOLLOW_UP,), campanhas=super_ids),
+        "ultima_hora": disparo.contar_envios(db, hora_atras, campanhas=super_ids),
+        "respostas": db.scalar(
+            select(func.count()).select_from(Lead).where(Lead.campanha_id.in_(super_ids), Lead.respondeu_em >= utc(meia_noite))
+        ) or 0,
+        "reunioes": db.scalar(
+            select(func.count()).select_from(Reuniao).where(Reuniao.lead_id.in_(leads_super), Reuniao.created_at >= utc(meia_noite))
+        ) or 0,
         "pct_meta": min(round(100 * aberturas_hoje / meta), 100) if meta else 0,
     }
 
@@ -173,7 +185,7 @@ def painel(db: Session, agora: datetime | None = None) -> dict:
         select(func.count())
         .select_from(Lead)
         .join(Campanha, Campanha.id == Lead.campanha_id)
-        .where(Lead.status == LeadStatus.NA_FILA, Campanha.status == CampanhaStatus.ATIVA)
+        .where(Lead.status == LeadStatus.NA_FILA, Campanha.status == CampanhaStatus.ATIVA, Campanha.modo == CampanhaModo.SUPER)
     ) or 0
     livres = db.scalar(
         select(func.count()).select_from(Lead).where(Lead.status == LeadStatus.NOVO, Lead.campanha_id.is_(None))
@@ -195,13 +207,19 @@ def painel(db: Session, agora: datetime | None = None) -> dict:
     estoque_dias = round(na_fila / meta, 1) if meta else None
 
     avisos = []
+    if not super_ids:
+        avisos.append(
+            "Nenhuma campanha de super prospecção ativa: a meta e os limites desta tela não valem para nenhuma campanha. "
+            "Em Campanhas, escolha o tipo Super prospecção."
+        )
     if fora:
         avisos.append(
-            f"{len(fora)} número(s) cadastrado(s) fora das campanhas ativas não entram no disparo. "
+            f"{len(fora)} número(s) cadastrado(s) fora das campanhas de super prospecção. "
             "Use \"Puxar todos os números\" para incluí-los."
         )
     if not meta:
-        avisos.append("Defina a meta do dia para o sistema repartir o volume entre os números.")
+        if super_ids:
+            avisos.append("Defina a meta do dia para o sistema repartir o volume entre os números.")
     else:
         if capacidade["faltam"]:
             avisos.append(
@@ -241,6 +259,7 @@ def painel(db: Session, agora: datetime | None = None) -> dict:
         "livres": livres,
         "estoque_dias": estoque_dias,
         "linhas": linhas,
+        "campanhas_super": len(super_ids),
         "fora": len(fora),
         "avisos": avisos,
     }

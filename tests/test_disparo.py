@@ -39,8 +39,8 @@ def criar_numero(db, server, nome, limite):
     return numero
 
 
-def criar_campanha(db, nums, mensagens=("Oi {empresa}, tudo bem? Aqui em {cidade} vocês…",), status=CampanhaStatus.ATIVA):
-    c = campanhas.salvar(db, None, nome="Teste", nicho="padarias", oferta="mais clientes", prompt_agente="")
+def criar_campanha(db, nums, mensagens=("Oi {empresa}, tudo bem? Aqui em {cidade} vocês…",), status=CampanhaStatus.ATIVA, modo="normal"):
+    c = campanhas.salvar(db, None, nome="Teste", nicho="padarias", oferta="mais clientes", prompt_agente="", modo=modo)
     for texto in mensagens:
         campanhas.adicionar_mensagem(db, c, texto)
     campanhas.definir_numeros(db, c, [n.id for n in nums])

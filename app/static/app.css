@@ -177,3 +177,5 @@ textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--border); bo
 .numeros-resumo strong small { font-size: 14px; font-weight: normal; }
 .form.proxy { max-width: none; }
 .proxy-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.status.modo-super { background: #f3e8ff; color: #6b21a8; }
+.modo-campanha label.check { align-items: flex-start; }

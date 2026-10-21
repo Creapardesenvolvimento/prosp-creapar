@@ -23,6 +23,7 @@ from app.models import (
     Mensagem,
     Campanha,
     CampanhaMensagem,
+    CampanhaModo,
     CampanhaStatus,
     Envio,
     EnvioStatus,
@@ -71,12 +72,22 @@ def meta_por_hora(regras: RegrasDisparo, meta: int) -> int:
     return math.ceil(meta * 1.15 / max(horas_de_disparo(regras), 1))
 
 
-def contar_envios(db: Session, desde: datetime, tipos=(EnvioTipo.ABERTURA,)) -> int:
-    return db.scalar(
+def campanhas_super_ativas(db: Session) -> set[int]:
+    return set(
+        db.scalars(select(Campanha.id).where(Campanha.status == CampanhaStatus.ATIVA, Campanha.modo == CampanhaModo.SUPER))
+    )
+
+
+def contar_envios(db: Session, desde: datetime, tipos=(EnvioTipo.ABERTURA,), campanhas: set[int] | None = None) -> int:
+    """campanhas: conta só os envios delas (None = todas)."""
+    consulta = (
         select(func.count())
         .select_from(Envio)
         .where(Envio.tipo.in_(list(tipos)), Envio.status == EnvioStatus.ENVIADO, Envio.enviado_em >= utc(desde))
-    ) or 0
+    )
+    if campanhas is not None:
+        consulta = consulta.where(Envio.campanha_id.in_(campanhas))
+    return db.scalar(consulta) or 0
 
 
 def envios_por_numero(db: Session, desde: datetime) -> dict[int, int]:
@@ -131,17 +142,20 @@ def numeros_aptos(db: Session, agora: datetime) -> list[WhatsappNumber]:
     return [n for n in numeros_com_capacidade(db) if n.proximo_envio_em is None or como_utc(n.proximo_envio_em) <= agora]
 
 
-def reservar_lead(db: Session, numero: WhatsappNumber) -> Lead | None:
+def reservar_lead(db: Session, numero: WhatsappNumber, sem_campanhas: set[int] | None = None) -> Lead | None:
     """Pega o próximo lead da fila das campanhas ativas deste número e o amarra a ele.
 
     A reserva é um UPDATE condicional: se outro processo pegou o mesmo lead, tenta o próximo.
     É o que garante que um lead nunca recebe a primeira mensagem de dois números.
+    sem_campanhas: campanhas que não podem receber abertura agora (super prospecção com a meta batida).
     """
     campanhas_do_numero = (
         select(campanha_numeros.c.campanha_id)
         .join(Campanha, Campanha.id == campanha_numeros.c.campanha_id)
         .where(campanha_numeros.c.numero_id == numero.id, Campanha.status == CampanhaStatus.ATIVA)
     )
+    if sem_campanhas:
+        campanhas_do_numero = campanhas_do_numero.where(Campanha.id.not_in(sem_campanhas))
     candidatos = db.scalars(
         select(Lead.id)
         .where(
@@ -284,44 +298,52 @@ def ciclo(db: Session, agora: datetime | None = None, rng: random.Random | None 
     regras = config_sistema.regras_disparo(db)
     if not dentro_do_horario(regras, agora):
         return 0
+    # Super prospecção: a meta do dia e o máximo por hora valem só para as campanhas desse tipo e os
+    # números ligados a elas. As campanhas normais seguem só os limites de cada número (rampa e intervalos).
     volume = config_sistema.regras_volume(db)
-    meta = volume.meta_diaria
-    # Meta do dia: as primeiras mensagens de todos os números somadas. Follow-up não conta na meta
+    super_ids = campanhas_super_ativas(db)
+    numeros_super = numeros_svc.ids_em_super_prospeccao(db) if super_ids else set()
+    meta = volume.meta_diaria if super_ids else 0
+    # Meta do dia: as primeiras mensagens das campanhas super somadas. Follow-up não conta na meta
     # (mas conta no limite de cada número).
-    aberturas_hoje = contar_envios(db, inicio_do_dia(regras, agora)) if meta else 0
-    aberturas_hora = contar_envios(db, agora - timedelta(hours=1)) if meta else 0
+    aberturas_hoje = contar_envios(db, inicio_do_dia(regras, agora), campanhas=super_ids) if meta else 0
+    aberturas_hora = contar_envios(db, agora - timedelta(hours=1), campanhas=super_ids) if meta else 0
     teto_hora = meta_por_hora(regras, meta) if meta else 0
     cota = None
     if meta:
-        # O que falta da meta, repartido entre os números que ainda podem enviar hoje.
-        cota = math.ceil(max(meta - aberturas_hoje, 0) / max(len(numeros_com_capacidade(db)), 1))
-    na_hora = envios_por_numero(db, agora - timedelta(hours=1))
+        # O que falta da meta, repartido entre os números da super que ainda podem enviar hoje.
+        com_capacidade = [n for n in numeros_com_capacidade(db) if n.id in numeros_super]
+        cota = math.ceil(max(meta - aberturas_hoje, 0) / max(len(com_capacidade), 1))
+    na_hora = envios_por_numero(db, agora - timedelta(hours=1)) if numeros_super else {}
 
     enviados = 0
     for numero in numeros_aptos(db, agora):
+        eh_super = numero.id in numeros_super
         if conferir_taxa_de_resposta(db, numero, regras, agora):
             alertas.avisar_chip(db, numero, "pausado", numero.motivo_pausa, agora)
             db.commit()
             continue
-        if na_hora.get(numero.id, 0) >= volume.limite_hora_numero:
+        if eh_super and na_hora.get(numero.id, 0) >= volume.limite_hora_numero:
             continue  # já mandou o máximo da hora; volta quando a janela andar
         # Follow-up vencido tem a vez: quem já recebeu a abertura deste número vem antes de lead novo.
         lead = followup.lead_para_followup(db, numero, agora, dias_followup) if followup_ativo else None
         if lead is not None:
             envio = followup.enviar_followup(db, numero, lead, agora, rng, dias_followup)
         else:
-            if meta and (aberturas_hoje >= meta or aberturas_hora >= teto_hora):
-                continue  # meta do dia (ou da hora) batida: só follow-up
-            lead = reservar_lead(db, numero)
+            # Meta do dia (ou da hora) batida: as campanhas super param; as normais do número seguem.
+            meta_batida = bool(meta) and (aberturas_hoje >= meta or aberturas_hora >= teto_hora)
+            lead = reservar_lead(db, numero, sem_campanhas=super_ids if meta_batida else None)
             if lead is None:
                 continue
             envio = enviar_abertura(db, numero, lead, agora, rng)
-            if envio is not None and envio.status == EnvioStatus.ENVIADO:
+            if envio is not None and envio.status == EnvioStatus.ENVIADO and lead.campanha_id in super_ids:
                 aberturas_hoje += 1
                 aberturas_hora += 1
         if envio is not None and envio.status == EnvioStatus.ENVIADO:
             enviados += 1
-            numero.proximo_envio_em = agora + timedelta(seconds=proximo_intervalo(regras, numero, agora, rng, cota))
+            numero.proximo_envio_em = agora + timedelta(
+                seconds=proximo_intervalo(regras, numero, agora, rng, cota if eh_super else None)
+            )
         elif envio is not None:
             numero.proximo_envio_em = agora + timedelta(seconds=regras.intervalo_min_seg)
             if conferir_falhas(db, numero, volume.falhas_seguidas):

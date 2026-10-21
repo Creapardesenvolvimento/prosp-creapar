@@ -55,12 +55,13 @@ CAMPOS = [
     Campo("pausa_falhas_seguidas", "Proteção", "Pausar número depois de N falhas seguidas no envio", "inteiro",
           "Falha seguida costuma ser chip bloqueado ou sessão caída. 0 desliga.", 0, 20),
     Campo("meta_diaria", "Super prospecção", "Meta de primeiras mensagens por dia (todos os números)", "inteiro",
-          "O sistema reparte a meta entre os números e espalha pelo horário de disparo. 0 = sem meta: cada número "
-          "envia até o próprio limite.", 0, 20000),
+          "Só nas campanhas de super prospecção. O sistema reparte a meta entre os números delas e espalha pelo "
+          "horário de disparo. 0 = sem meta: cada número envia até o próprio limite.", 0, 20000),
     Campo("teto_por_numero", "Super prospecção", "Teto de envios por número por dia", "inteiro",
-          "Nenhum número passa disso, mesmo que a rampa permita. Conta primeira mensagem e follow-up.", 1, 500),
+          "Só nas campanhas de super prospecção. Nenhum número passa disso, mesmo que a rampa permita. "
+          "Conta primeira mensagem e follow-up.", 1, 500),
     Campo("limite_hora_numero", "Super prospecção", "Máximo de envios por número por hora", "inteiro",
-          "Evita rajadas no mesmo chip.", 1, 60),
+          "Só nas campanhas de super prospecção. Evita rajadas no mesmo chip.", 1, 60),
     Campo("abastecer_ativo", "Abastecimento automático", "Buscar no Google Maps sozinho quando a fila baixar", "simnao",
           "Usa o plano de buscas da tela Super prospecção, uma busca por vez."),
     Campo("abastecer_estoque_dias", "Abastecimento automático", "Manter leads na fila para quantos dias", "decimal",
@@ -275,10 +276,13 @@ def regras_disparo(db: Session) -> RegrasDisparo:
 
 
 def rampa(db: Session) -> Rampa:
-    """A rampa do painel, limitada pelo teto por número."""
-    v = valores(db)
-    teto = int(v["teto_por_numero"])
-    return [(dia, min(limite, teto)) for dia, limite in parse_rampa(v["rampa"])]
+    return parse_rampa(valores(db)["rampa"])
+
+
+def rampa_super(db: Session) -> Rampa:
+    """A rampa dos números em super prospecção: a mesma, limitada pelo teto por número."""
+    teto = int(valores(db)["teto_por_numero"])
+    return [(dia, min(limite, teto)) for dia, limite in rampa(db)]
 
 
 @dataclass(frozen=True)

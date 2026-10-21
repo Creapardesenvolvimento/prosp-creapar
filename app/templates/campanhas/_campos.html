@@ -1,3 +1,11 @@
+<fieldset class="modo-campanha">
+  <legend>Tipo</legend>
+  <label class="check"><input type="radio" name="modo" value="normal" {% if (v.modo or "normal") == "normal" %}checked{% endif %}>
+    <span><strong>Normal</strong> · segue os limites de Configurações: rampa de cada número e intervalos entre envios.</span></label>
+  <label class="check"><input type="radio" name="modo" value="super" {% if v.modo == "super" %}checked{% endif %}>
+    <span><strong>Super prospecção</strong> · além disso, respeita a <a href="/prospeccao">meta do dia, o teto por número e o
+      máximo por hora</a> da Super prospecção. Um número que esteja numa campanha super segue as regras dela.</span></label>
+</fieldset>
 <label>Nome <input type="text" name="nome" value="{{ v.nome or '' }}" required maxlength="200" placeholder="Hotéis Costa Verde — outubro"></label>
 <label>Nicho <input type="text" name="nicho" value="{{ v.nicho or '' }}" maxlength="200" placeholder="hotéis e pousadas"></label>
 <label>Oferta / promessa

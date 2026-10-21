@@ -1,4 +1,4 @@
-from app.models.campanhas import Campanha, CampanhaFollowup, CampanhaMensagem, CampanhaStatus, Envio, EnvioStatus, EnvioTipo
+from app.models.campanhas import Campanha, CampanhaFollowup, CampanhaMensagem, CampanhaModo, CampanhaStatus, Envio, EnvioStatus, EnvioTipo
 from app.models.config import Configuracao
 from app.models.empresas import Empresa
 from app.models.mensagens import Autor, Direcao, Mensagem
@@ -21,6 +21,7 @@ __all__ = [
     "Blacklist",
     "Campanha",
     "CampanhaMensagem",
+    "CampanhaModo",
     "CampanhaStatus",
     "Configuracao",
     "Empresa",

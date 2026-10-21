@@ -16,6 +16,7 @@ from app.models import (
     Campanha,
     CampanhaFollowup,
     CampanhaMensagem,
+    CampanhaModo,
     CampanhaStatus,
     Envio,
     EnvioStatus,
@@ -39,9 +40,13 @@ class CampanhaError(Exception):
     pass
 
 
-def salvar(db: Session, campanha: Campanha | None, *, nome: str, nicho: str, oferta: str, prompt_agente: str) -> Campanha:
+def salvar(
+    db: Session, campanha: Campanha | None, *, nome: str, nicho: str, oferta: str, prompt_agente: str, modo: str | None = None
+) -> Campanha:
     if not nome.strip():
         raise CampanhaError("Informe o nome da campanha.")
+    if modo is not None and modo not in (CampanhaModo.NORMAL, CampanhaModo.SUPER):
+        raise CampanhaError("Tipo de campanha inválido.")
     if campanha is None:
         campanha = Campanha(status=CampanhaStatus.RASCUNHO)
         db.add(campanha)
@@ -49,6 +54,8 @@ def salvar(db: Session, campanha: Campanha | None, *, nome: str, nicho: str, ofe
     campanha.nicho = nicho.strip()
     campanha.oferta = oferta.strip()
     campanha.prompt_agente = prompt_agente.strip()
+    if modo is not None:
+        campanha.modo = modo
     db.flush()
     return campanha
 

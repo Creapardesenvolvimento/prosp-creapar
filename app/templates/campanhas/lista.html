@@ -13,7 +13,7 @@
   <tbody>
     {% for c, m, p in campanhas %}
     <tr>
-      <td><a href="/campanhas/{{ c.id }}">{{ c.nome }}</a>{% if c.nicho %}<br><small>{{ c.nicho }}</small>{% endif %}</td>
+      <td><a href="/campanhas/{{ c.id }}">{{ c.nome }}</a>{% if c.super %} <span class="status modo-super">super</span>{% endif %}{% if c.nicho %}<br><small>{{ c.nicho }}</small>{% endif %}</td>
       <td><span class="status campanha-{{ c.status }}">{{ c.status }}</span></td>
       <td style="min-width:180px">
         {% if p.vazia %}<small class="muted">sem leads</small>

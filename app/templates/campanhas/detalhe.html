@@ -5,6 +5,8 @@
 <div class="titulo">
   <h1>{{ c.nome }}</h1>
   <span class="status campanha-{{ c.status }}">{{ c.status }}</span>
+  {% if c.super %}<a href="/prospeccao" class="status modo-super" title="Segue a meta e os limites da Super prospecção">super prospecção</a>
+  {% else %}<span class="status">normal</span>{% endif %}
   <div class="acoes">
     {% if c.status in ("rascunho", "pausada") %}
     <form method="post" action="/campanhas/{{ c.id }}/ativar"><button>{{ "Retomar" if c.status == "pausada" else "Ativar" }}</button></form>

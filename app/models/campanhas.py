@@ -15,6 +15,11 @@ class CampanhaStatus(StrEnum):
     ENCERRADA = "encerrada"
 
 
+class CampanhaModo(StrEnum):
+    NORMAL = "normal"  # limites de Configurações (rampa, intervalos)
+    SUPER = "super"  # também a meta do dia, o teto por número e o máximo por hora da Super prospecção
+
+
 class EnvioTipo(StrEnum):
     ABERTURA = "abertura"
     FOLLOW_UP = "follow_up"
@@ -44,6 +49,7 @@ class Campanha(Base):
     oferta: Mapped[str] = mapped_column(Text, default="")
     prompt_agente: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default=CampanhaStatus.RASCUNHO, index=True)
+    modo: Mapped[str] = mapped_column(String(10), default=CampanhaModo.NORMAL, server_default=CampanhaModo.NORMAL)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -56,6 +62,10 @@ class Campanha(Base):
     followups: Mapped[list["CampanhaFollowup"]] = relationship(
         cascade="all, delete-orphan", order_by="(CampanhaFollowup.passo, CampanhaFollowup.id)"
     )
+
+    @property
+    def super(self) -> bool:
+        return self.modo == CampanhaModo.SUPER
 
 
 class CampanhaMensagem(Base):
