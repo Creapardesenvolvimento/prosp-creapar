@@ -7,6 +7,7 @@ Assim cada número envia em proporção ao seu limite da rampa.
 """
 
 import logging
+import math
 import random
 from datetime import datetime, timedelta, timezone
 
@@ -32,7 +33,7 @@ from app.models import (
     WhatsappNumber,
 )
 from app.models.campanhas import campanha_numeros
-from app.services import campanhas, config_sistema, followup
+from app.services import alertas, campanhas, config_sistema, followup
 from app.services import numeros as numeros_svc
 from app.services.agente import marcar_como_do_sistema
 from app.services.agenda import como_utc, utc
@@ -56,10 +57,50 @@ def segundos_ate_o_fim(regras: RegrasDisparo, agora: datetime) -> float:
     return max((fim - local).total_seconds(), 0.0)
 
 
-def proximo_intervalo(regras: RegrasDisparo, numero: WhatsappNumber, agora: datetime, rng: random.Random) -> float:
-    """Segundos até o próximo envio deste número."""
+def inicio_do_dia(regras: RegrasDisparo, agora: datetime) -> datetime:
+    local = como_utc(agora).astimezone(regras.tz)
+    return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+
+
+def horas_de_disparo(regras: RegrasDisparo) -> float:
+    return (regras.fim.hour * 60 + regras.fim.minute - regras.inicio.hour * 60 - regras.inicio.minute) / 60
+
+
+def meta_por_hora(regras: RegrasDisparo, meta: int) -> int:
+    """Teto de primeiras mensagens por hora, com 15% de folga para recuperar atraso."""
+    return math.ceil(meta * 1.15 / max(horas_de_disparo(regras), 1))
+
+
+def contar_envios(db: Session, desde: datetime, tipos=(EnvioTipo.ABERTURA,)) -> int:
+    return db.scalar(
+        select(func.count())
+        .select_from(Envio)
+        .where(Envio.tipo.in_(list(tipos)), Envio.status == EnvioStatus.ENVIADO, Envio.enviado_em >= utc(desde))
+    ) or 0
+
+
+def envios_por_numero(db: Session, desde: datetime) -> dict[int, int]:
+    return dict(
+        db.execute(
+            select(Envio.numero_id, func.count())
+            .where(
+                Envio.tipo.in_([EnvioTipo.ABERTURA, EnvioTipo.FOLLOW_UP]),
+                Envio.status == EnvioStatus.ENVIADO,
+                Envio.enviado_em >= utc(desde),
+            )
+            .group_by(Envio.numero_id)
+        ).all()
+    )
+
+
+def proximo_intervalo(
+    regras: RegrasDisparo, numero: WhatsappNumber, agora: datetime, rng: random.Random, cota: int | None = None
+) -> float:
+    """Segundos até o próximo envio deste número. cota: quanto da meta do dia ainda cabe a cada número."""
     sorteado = rng.uniform(regras.intervalo_min_seg, regras.intervalo_max_seg)
     restantes = numero.limite_diario_atual - numero.envios_hoje
+    if cota is not None:
+        restantes = min(restantes, cota)
     if restantes <= 0:
         return sorteado
     # Espalha o que falta do limite pelo resto do expediente, com variação para não ficar regular.
@@ -68,13 +109,14 @@ def proximo_intervalo(regras: RegrasDisparo, numero: WhatsappNumber, agora: date
     return max(sorteado, ritmo * rng.uniform(0.8, 1.2))
 
 
-def numeros_aptos(db: Session, agora: datetime) -> list[WhatsappNumber]:
+def numeros_com_capacidade(db: Session) -> list[WhatsappNumber]:
+    """Conectados, em campanha ativa e ainda abaixo do limite de hoje (liberados agora ou não)."""
     em_campanha_ativa = (
         select(campanha_numeros.c.numero_id)
         .join(Campanha, Campanha.id == campanha_numeros.c.campanha_id)
         .where(Campanha.status == CampanhaStatus.ATIVA)
     )
-    numeros = db.scalars(
+    return db.scalars(
         select(WhatsappNumber)
         .where(
             WhatsappNumber.status == NumeroStatus.CONECTADO,
@@ -83,7 +125,10 @@ def numeros_aptos(db: Session, agora: datetime) -> list[WhatsappNumber]:
         )
         .order_by(WhatsappNumber.id)
     ).all()
-    return [n for n in numeros if n.proximo_envio_em is None or como_utc(n.proximo_envio_em) <= agora]
+
+
+def numeros_aptos(db: Session, agora: datetime) -> list[WhatsappNumber]:
+    return [n for n in numeros_com_capacidade(db) if n.proximo_envio_em is None or como_utc(n.proximo_envio_em) <= agora]
 
 
 def reservar_lead(db: Session, numero: WhatsappNumber) -> Lead | None:
@@ -146,7 +191,7 @@ def enviar_abertura(db: Session, numero: WhatsappNumber, lead: Lead, agora: date
         numero_id=numero.id,
         mensagem_id=mensagem.id,
         tipo=EnvioTipo.ABERTURA,
-        texto=campanhas.renderizar(mensagem.texto, lead),
+        texto=campanhas.renderizar(mensagem.texto, lead, rng),
         status=EnvioStatus.PENDENTE,
     )
     db.add(envio)
@@ -209,6 +254,24 @@ def conferir_taxa_de_resposta(db: Session, numero: WhatsappNumber, regras: Regra
     return True
 
 
+def conferir_falhas(db: Session, numero: WhatsappNumber, falhas_seguidas: int) -> bool:
+    """Pausa o número se os últimos envios falharam todos (chip bloqueado ou sessão caída). Retorna True se pausou."""
+    if falhas_seguidas <= 0:
+        return False
+    ultimos = db.scalars(
+        select(Envio.status)
+        .where(Envio.numero_id == numero.id, Envio.tipo.in_([EnvioTipo.ABERTURA, EnvioTipo.FOLLOW_UP]))
+        .order_by(Envio.id.desc())
+        .limit(falhas_seguidas)
+    ).all()
+    if len(ultimos) < falhas_seguidas or any(status != EnvioStatus.FALHOU for status in ultimos):
+        return False
+    numero.status = NumeroStatus.PAUSADO
+    numero.motivo_pausa = f"{falhas_seguidas} falhas seguidas no envio"
+    logger.warning("número pausado por falhas seguidas", extra={"numero_id": numero.id, "falhas": falhas_seguidas})
+    return True
+
+
 def ciclo(db: Session, agora: datetime | None = None, rng: random.Random | None = None) -> int:
     """Uma rodada do disparo. Retorna quantas mensagens saíram. Faz commit a cada envio."""
     agora = utc(agora or datetime.now(timezone.utc))  # o SQLite descarta o fuso ao gravar
@@ -221,25 +284,48 @@ def ciclo(db: Session, agora: datetime | None = None, rng: random.Random | None 
     regras = config_sistema.regras_disparo(db)
     if not dentro_do_horario(regras, agora):
         return 0
+    volume = config_sistema.regras_volume(db)
+    meta = volume.meta_diaria
+    # Meta do dia: as primeiras mensagens de todos os números somadas. Follow-up não conta na meta
+    # (mas conta no limite de cada número).
+    aberturas_hoje = contar_envios(db, inicio_do_dia(regras, agora)) if meta else 0
+    aberturas_hora = contar_envios(db, agora - timedelta(hours=1)) if meta else 0
+    teto_hora = meta_por_hora(regras, meta) if meta else 0
+    cota = None
+    if meta:
+        # O que falta da meta, repartido entre os números que ainda podem enviar hoje.
+        cota = math.ceil(max(meta - aberturas_hoje, 0) / max(len(numeros_com_capacidade(db)), 1))
+    na_hora = envios_por_numero(db, agora - timedelta(hours=1))
+
     enviados = 0
     for numero in numeros_aptos(db, agora):
         if conferir_taxa_de_resposta(db, numero, regras, agora):
+            alertas.avisar_chip(db, numero, "pausado", numero.motivo_pausa, agora)
             db.commit()
             continue
+        if na_hora.get(numero.id, 0) >= volume.limite_hora_numero:
+            continue  # já mandou o máximo da hora; volta quando a janela andar
         # Follow-up vencido tem a vez: quem já recebeu a abertura deste número vem antes de lead novo.
         lead = followup.lead_para_followup(db, numero, agora, dias_followup) if followup_ativo else None
         if lead is not None:
             envio = followup.enviar_followup(db, numero, lead, agora, rng, dias_followup)
         else:
+            if meta and (aberturas_hoje >= meta or aberturas_hora >= teto_hora):
+                continue  # meta do dia (ou da hora) batida: só follow-up
             lead = reservar_lead(db, numero)
             if lead is None:
                 continue
             envio = enviar_abertura(db, numero, lead, agora, rng)
+            if envio is not None and envio.status == EnvioStatus.ENVIADO:
+                aberturas_hoje += 1
+                aberturas_hora += 1
         if envio is not None and envio.status == EnvioStatus.ENVIADO:
             enviados += 1
-            numero.proximo_envio_em = agora + timedelta(seconds=proximo_intervalo(regras, numero, agora, rng))
+            numero.proximo_envio_em = agora + timedelta(seconds=proximo_intervalo(regras, numero, agora, rng, cota))
         elif envio is not None:
             numero.proximo_envio_em = agora + timedelta(seconds=regras.intervalo_min_seg)
+            if conferir_falhas(db, numero, volume.falhas_seguidas):
+                alertas.avisar_chip(db, numero, "pausado", numero.motivo_pausa, agora)
         db.commit()
     return enviados
 

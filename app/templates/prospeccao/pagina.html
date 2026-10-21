@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Super prospecção{% endblock %}
+{% block content %}
+<div class="titulo">
+  <h1>Super prospecção</h1>
+  <a class="botao" href="/importar">Importar lista</a>
+  <a class="botao secundario" href="/buscas">Nova busca</a>
+</div>
+{% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+{% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
+
+<form method="post" action="/prospeccao/metas" class="card metas">
+  <label>Meta de primeiras mensagens por dia
+    <input type="number" name="meta_diaria" value="{{ p.volume.meta_diaria }}" min="0" max="20000" required>
+    <small>0 = sem meta: cada número envia até o próprio limite.</small>
+  </label>
+  <label>Teto por número por dia
+    <input type="number" name="teto_por_numero" value="{{ p.volume.teto_por_numero }}" min="1" max="500" required>
+    <small>Recomendado até 50 para contato frio.</small>
+  </label>
+  <label>Máximo por número por hora
+    <input type="number" name="limite_hora_numero" value="{{ p.volume.limite_hora_numero }}" min="1" max="60" required>
+  </label>
+  <button type="submit">Salvar metas</button>
+</form>
+
+{% include "prospeccao/_painel.html" %}
+
+<p class="muted" style="margin-top:16px">
+  Horário, intervalos, rampa, pausa por falhas e avisos de número caído ficam em <a href="/config">Configurações</a>.
+  Variações nas mensagens da campanha, como <code>{Oi|Olá|Bom dia}</code>, fazem cada envio sair com um texto diferente.
+</p>
+{% endblock %}

@@ -171,3 +171,7 @@ textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--border); bo
 
 .passo-followup { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; }
 .passo-followup h3 { font-size: 14px; margin: 0 0 6px; }
+
+.metas { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; align-items: start; }
+.metas button { align-self: center; }
+.numeros-resumo strong small { font-size: 14px; font-weight: normal; }

@@ -3,7 +3,7 @@ import io
 import re
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,9 +11,11 @@ from sqlalchemy.orm import Session
 from app.api.deps import current_user, templates
 from app.config import get_settings
 from app.db import get_db
-from app.models import Busca, BuscaStatus, Empresa, Lead, User
+from app.models import Busca, BuscaStatus, Campanha, CampanhaStatus, Empresa, Lead, User
 from app.services import buscas as svc
+from app.services import importacao
 from app.services.buscas import MOTIVOS_DESCARTE, BuscaError
+from app.services.importacao import ImportacaoError
 from app.tasks.buscas import iniciar_busca, processar_busca
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -73,6 +75,70 @@ def criar(
     return RedirectResponse(f"/buscas/{busca.id}", status_code=303)
 
 
+def _contexto_importar(db: Session, user: User, **extra) -> dict:
+    campanhas = db.scalars(
+        select(Campanha).where(Campanha.status != CampanhaStatus.ENCERRADA).order_by(Campanha.created_at.desc())
+    ).all()
+    listas = db.scalars(select(Busca).where(Busca.origem == "importacao").order_by(Busca.created_at.desc()).limit(50)).all()
+    return {
+        "user": user,
+        "campanhas": campanhas,
+        "listas": listas,
+        "erro": None,
+        "valores": {"nome": "", "texto": "", "cidade": "", "segmento": "", "campanha_id": ""},
+        "maximo": importacao.MAXIMO_CONTATOS,
+        **extra,
+    }
+
+
+@router.get("/importar")
+def importar_form(request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return templates.TemplateResponse(request, "buscas/importar.html", _contexto_importar(db, user))
+
+
+@router.post("/importar")
+async def importar(
+    request: Request,
+    arquivo: UploadFile | None = File(None),
+    nome: str = Form(""),
+    texto: str = Form(""),
+    cidade: str = Form(""),
+    segmento: str = Form(""),
+    campanha_id: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    valores = {"nome": nome, "texto": texto, "cidade": cidade, "segmento": segmento, "campanha_id": campanha_id}
+    try:
+        # Arquivo e texto colado são lidos separados: cada um pode ter (ou não) o próprio cabeçalho.
+        contatos = []
+        nome_arquivo = arquivo.filename if arquivo and arquivo.filename else ""
+        if nome_arquivo:
+            conteudo = await arquivo.read(importacao.TAMANHO_MAXIMO + 1)
+            contatos += importacao.extrair_contatos(importacao.ler_arquivo(nome_arquivo, conteudo))
+        if texto.strip():
+            contatos += importacao.extrair_contatos(importacao.ler_texto(texto))
+        if not nome_arquivo and not texto.strip():
+            raise ImportacaoError("Escolha um arquivo ou cole os números no campo de texto.")
+        campanha = db.get(Campanha, int(campanha_id)) if campanha_id.isdigit() else None
+        busca = importacao.importar(
+            db,
+            contatos,
+            nome_lista=nome.strip() or nome_arquivo.rsplit(".", 1)[0] or "Lista colada",
+            cidade=cidade,
+            segmento=segmento,
+            campanha=campanha,
+            user=user,
+        )
+    except ImportacaoError as exc:
+        db.rollback()
+        contexto = _contexto_importar(db, user, erro=str(exc), valores=valores)
+        return templates.TemplateResponse(request, "buscas/importar.html", contexto, status_code=400)
+    db.commit()
+    processar_busca.delay(busca.id)
+    return RedirectResponse(f"/buscas/{busca.id}", status_code=303)
+
+
 def _contexto_detalhe(db: Session, busca: Busca) -> dict:
     leads = db.scalars(select(Lead).where(Lead.busca_id == busca.id).order_by(Lead.id).limit(200)).all()
     descartadas = db.scalars(
@@ -89,6 +155,7 @@ def _contexto_detalhe(db: Session, busca: Busca) -> dict:
         "descartados": sum((busca.descartes or {}).values()),
         "em_andamento": busca.status in EM_ANDAMENTO,
         "custo_maximo": svc.custo_maximo(busca.limite),
+        "campanha_destino": db.get(Campanha, busca.campanha_id) if busca.campanha_id else None,
     }
 
 

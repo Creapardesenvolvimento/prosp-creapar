@@ -48,6 +48,17 @@ class Busca(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    origem: Mapped[str] = mapped_column(String(20), default="apify", server_default="apify")  # apify | importacao
+    # Campanha que recebe os leads assim que a lista termina de ser processada (importação).
+    campanha_id: Mapped[int | None] = mapped_column(ForeignKey("campanhas.id", ondelete="SET NULL"))
+
+    @property
+    def importada(self) -> bool:
+        return self.origem == "importacao"
+
+    @property
+    def rotulo(self) -> str:
+        return f"Lista: {self.termo}" if self.importada else f"{self.termo} — {self.cidade}"
 
 
 class Lead(Base):

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 MOTIVOS_DESCARTE = {
     "fechado": "empresa fechada",
     "sem_telefone": "sem telefone",
+    "telefone_invalido": "telefone inválido",
     "nao_celular": "telefone fixo",
     "repetido_na_busca": "repetido na própria busca",
     "ja_era_lead": "já era lead",
@@ -32,6 +33,7 @@ MOTIVOS_DESCARTE = {
 RUN_COM_RESULTADO = {"SUCCEEDED", "ABORTED", "TIMED-OUT"}
 RUN_FALHOU = {"FAILED"}
 LOTE_VALIDACAO = 50
+LOTE_CONSULTA = 1000  # telefones por consulta ao banco (listas importadas podem ter milhares)
 
 
 class BuscaError(Exception):
@@ -127,28 +129,35 @@ def reivindicar_processamento(db: Session, busca_id: int) -> bool:
     return result.rowcount == 1
 
 
-def _numero_para_validacao(db: Session) -> WhatsappNumber:
+def _numeros_para_validacao(db: Session) -> list[WhatsappNumber]:
     numeros = db.scalars(
         select(WhatsappNumber).where(WhatsappNumber.status.in_([NumeroStatus.CONECTADO, NumeroStatus.PAUSADO]))
     ).all()
     if not numeros:
         raise BuscaError("Nenhum número de WhatsApp conectado para validar os telefones. Conecte um e reprocesse.")
-    # Prefere os conectados; entre eles, o que menos enviou hoje.
-    return min(numeros, key=lambda n: (n.status != NumeroStatus.CONECTADO, n.envios_hoje))
+    conectados = [n for n in numeros if n.status == NumeroStatus.CONECTADO]
+    # Prefere os conectados, os que menos enviaram hoje primeiro.
+    return sorted(conectados or numeros, key=lambda n: (n.envios_hoje, n.id))
 
 
 def validar_whatsapp(db: Session, telefones: list[str], pausa_entre_lotes: float = 1.0) -> dict[str, str | None]:
-    """telefone E.164 -> jid (tem WhatsApp) ou None."""
-    numero = _numero_para_validacao(db)
-    client = evolution.get_client(numero.server)
+    """telefone E.164 -> jid (tem WhatsApp) ou None. Os lotes se revezam entre os números conectados,
+    para que uma lista grande não concentre milhares de consultas num chip só."""
+    numeros = _numeros_para_validacao(db)
     resultado: dict[str, str | None] = {}
-    for i in range(0, len(telefones), LOTE_VALIDACAO):
+    for indice, i in enumerate(range(0, len(telefones), LOTE_VALIDACAO)):
         lote = telefones[i : i + LOTE_VALIDACAO]
         if i and pausa_entre_lotes:
             time.sleep(pausa_entre_lotes)
-        jids = client.check_whatsapp(numero.instance_name, [para_evolution(t) for t in lote])
+        numero = numeros[indice % len(numeros)]
+        jids = evolution.get_client(numero.server).check_whatsapp(numero.instance_name, [para_evolution(t) for t in lote])
         resultado.update({t: jids.get(para_evolution(t)) for t in lote})
     return resultado
+
+
+def _em_lotes(itens: list[str]):
+    for i in range(0, len(itens), LOTE_CONSULTA):
+        yield itens[i : i + LOTE_CONSULTA]
 
 
 def _texto(item: dict, chave: str, tamanho: int) -> str | None:
@@ -220,8 +229,9 @@ def processar(db: Session, busca: Busca, pausa_entre_lotes: float = 1.0) -> None
         if empresa.dados.get("permanentlyClosed"):
             descartar(empresa, "fechado")
         elif empresa.telefone is None:
-            descartar(empresa, "sem_telefone")
-        elif not empresa.celular:
+            descartar(empresa, "telefone_invalido" if busca.importada and empresa.telefone_original else "sem_telefone")
+        elif not empresa.celular and not busca.importada:
+            # No Google Maps o fixo quase nunca é WhatsApp. Numa lista importada pode ser WhatsApp Business: confere.
             descartar(empresa, "nao_celular")
         elif empresa.telefone in candidatos:
             descartar(empresa, "repetido_na_busca")
@@ -229,8 +239,11 @@ def processar(db: Session, busca: Busca, pausa_entre_lotes: float = 1.0) -> None
             candidatos[empresa.telefone] = empresa
 
     if candidatos:
-        ja_leads = dict(db.execute(select(Lead.telefone, Lead.id).where(Lead.telefone.in_(candidatos))).all())
-        bloqueados = set(db.scalars(select(Blacklist.telefone).where(Blacklist.telefone.in_(candidatos))))
+        ja_leads: dict[str, int] = {}
+        bloqueados: set[str] = set()
+        for lote in _em_lotes(list(candidatos)):
+            ja_leads.update(db.execute(select(Lead.telefone, Lead.id).where(Lead.telefone.in_(lote))).all())
+            bloqueados.update(db.scalars(select(Blacklist.telefone).where(Blacklist.telefone.in_(lote))))
         for telefone, empresa in list(candidatos.items()):
             if telefone in bloqueados:
                 descartar(empresa, "blacklist")
@@ -275,10 +288,26 @@ def processar(db: Session, busca: Busca, pausa_entre_lotes: float = 1.0) -> None
     busca.status = BuscaStatus.CONCLUIDA
     busca.erro = None
     busca.finished_at = datetime.now(timezone.utc)
+    if busca.campanha_id and novos:
+        _mandar_para_campanha(db, busca)
     logger.info(
         "busca concluída",
         extra={"busca_id": busca.id, "encontrados": len(empresas), "novos": novos, "descartes": dict(descartes)},
     )
+
+
+def _mandar_para_campanha(db: Session, busca: Busca) -> None:
+    """Lista importada com campanha escolhida: os leads novos entram direto na fila dela."""
+    from app.models import Campanha
+    from app.services import campanhas
+
+    campanha = db.get(Campanha, busca.campanha_id)
+    if campanha is None:
+        return
+    try:
+        campanhas.adicionar_leads(db, campanha, [busca.id])
+    except campanhas.CampanhaError as exc:  # encerrada depois da importação: os leads ficam livres
+        logger.warning("lista não entrou na campanha", extra={"busca_id": busca.id, "erro": str(exc)})
 
 
 def recuperar_empresas(db: Session, busca: Busca) -> int:

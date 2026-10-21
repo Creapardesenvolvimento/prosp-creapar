@@ -310,7 +310,7 @@ def montar_sistema(db: Session, lead: Lead, abertura: str) -> str:
     partes = [
         f"Você é {v['atendente_nome']}, da {v['empresa_nome']}, e conversa pelo WhatsApp com um possível cliente.",
         f"Hoje é {agenda.DIAS_SEMANA[agora.weekday()]}, {agora:%d/%m/%Y}, {agora:%H:%M} (horário de Brasília).",
-        f"Empresa do lead: {lead.nome}" + (f" — {lead.categoria}" if lead.categoria else "") + (f", {lead.cidade}" if lead.cidade else "") + ".",
+        f"Empresa do lead: {lead.nome or '(nome não informado)'}" + (f" — {lead.categoria}" if lead.categoria else "") + (f", {lead.cidade}" if lead.cidade else "") + ".",
         f"Você mandou a primeira mensagem: \"{abertura}\". O lead respondeu e a conversa segue a partir daí.",
     ]
     if roteiro:
@@ -379,7 +379,7 @@ def _executar_ferramenta(db: Session, lead: Lead, nome: str, entrada: dict) -> t
         try:
             inicio = datetime.fromisoformat(entrada.get("inicio", ""))
             reuniao = agenda.agendar(
-                db, inicio, lead_nome=lead.nome, lead_telefone=lead.telefone, lead_id=lead.id,
+                db, inicio, lead_nome=lead.nome or lead.telefone, lead_telefone=lead.telefone, lead_id=lead.id,
                 observacoes=(entrada.get("observacoes") or "").strip()[:1000] or "Agendado pela IA (sem observação).",
             )
         except (ValueError, AgendaError) as exc:

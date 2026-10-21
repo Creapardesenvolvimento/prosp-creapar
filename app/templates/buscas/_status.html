@@ -2,15 +2,16 @@
   <p>
     <span class="status busca-{{ busca.status }}">{{ busca.status }}</span>
     {% if busca.status == "pendente" %}<span class="muted">Enviando para o Apify…</span>
+    {% elif busca.status == "executando" and busca.importada %}<span class="muted">Na fila para conferir quem tem WhatsApp…</span>
     {% elif busca.status == "executando" %}<span class="muted">O Apify está coletando as empresas. Isso leva alguns minutos; esta página se atualiza sozinha.</span>
-    {% elif busca.status == "processando" %}<span class="muted">Filtrando celulares e conferindo quem tem WhatsApp…</span>
+    {% elif busca.status == "processando" %}<span class="muted">{{ "Conferindo quem tem WhatsApp (listas grandes levam alguns minutos)…" if busca.importada else "Filtrando celulares e conferindo quem tem WhatsApp…" }}</span>
     {% endif %}
   </p>
   {% if busca.erro %}<p class="erro">{{ busca.erro }}</p>{% endif %}
 
   {% if busca.status == "concluida" %}
   <div class="numeros-resumo">
-    <div><strong>{{ busca.total_encontrados }}</strong><small>empresas encontradas</small></div>
+    <div><strong>{{ busca.total_encontrados }}</strong><small>{{ "telefones na lista" if busca.importada else "empresas encontradas" }}</small></div>
     <div><strong>{{ busca.total_novos }}</strong><small>viraram lead</small></div>
     <div><strong>{{ descartados }}</strong><small>descartadas</small></div>
   </div>

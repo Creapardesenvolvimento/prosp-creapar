@@ -36,7 +36,7 @@
 
 <div class="card" id="mensagens">
   <h2>Mensagens de abertura</h2>
-  <p class="muted">Cada envio sorteia uma variação. Use <code>{empresa}</code> e <code>{cidade}</code>. Quanto mais variações, menos textos iguais saem em massa.</p>
+  <p class="muted">Cada envio sorteia uma variação. Use <code>{empresa}</code> e <code>{cidade}</code>, e trechos sorteados como <code>{Oi|Olá|Bom dia}</code> dentro da própria mensagem. Quanto mais variações, menos textos iguais saem em massa.</p>
   {% set ativas = c.mensagens|selectattr("ativa")|list %}
   {% if ativas %}
   <ul class="lista">
@@ -122,7 +122,7 @@
   {% if com_leads %}
   <form method="post" action="/campanhas/{{ c.id }}/leads" class="form">
     {% for b, disponiveis in com_leads %}
-    <label class="check"><input type="checkbox" name="busca_id" value="{{ b.id }}"> {{ b.termo }} — {{ b.cidade }} <small class="muted">{{ disponiveis }} leads disponíveis</small></label>
+    <label class="check"><input type="checkbox" name="busca_id" value="{{ b.id }}"> {{ b.rotulo }} <small class="muted">{{ disponiveis }} leads disponíveis</small></label>
     {% endfor %}
     <button type="submit">Pôr na fila</button>
   </form>

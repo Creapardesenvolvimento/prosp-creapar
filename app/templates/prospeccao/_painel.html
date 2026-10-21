@@ -1,0 +1,77 @@
+<div id="painel-prospeccao" hx-get="/prospeccao/painel" hx-trigger="every 30s" hx-swap="outerHTML">
+  {% if p.avisos %}
+  <div class="alerta" style="margin-top:16px">
+    <ul class="lista" style="margin:0">{% for a in p.avisos %}<li>{{ a }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <div class="card" style="margin-top:16px">
+    <h2>Hoje {% if not p.no_horario %}<small class="muted">· fora do horário de disparo</small>{% endif %}</h2>
+    {% if p.meta %}
+    <div class="barra" title="{{ p.hoje.pct_meta }}% da meta"><span class="fase-reuniao" style="width:{{ p.hoje.pct_meta }}%"></span></div>
+    <p class="muted" style="margin:6px 0 0">{{ p.hoje.aberturas }} de {{ p.meta }} primeiras mensagens
+      {% if p.esperado_agora %}· no ritmo seriam {{ p.esperado_agora }} a esta hora
+        {% if p.hoje.aberturas + p.meta_hora < p.esperado_agora %}<span class="erro">(atrasado)</span>{% endif %}
+      {% endif %}</p>
+    {% endif %}
+    <div class="numeros-resumo">
+      <div><strong>{{ p.hoje.aberturas }}</strong><small>primeiras mensagens</small></div>
+      <div><strong>{{ p.hoje.ultima_hora }}{% if p.meta %}<small class="muted">/{{ p.meta_hora }}</small>{% endif %}</strong><small>na última hora</small></div>
+      <div><strong>{{ p.hoje.followups }}</strong><small>follow-ups</small></div>
+      <div><strong>{{ p.hoje.respostas }}</strong><small>respostas</small></div>
+      <div><strong>{{ p.hoje.reunioes }}</strong><small>reuniões agendadas</small></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Capacidade</h2>
+    <dl class="dados">
+      <dt>Números conectados</dt><dd>{{ p.capacidade.conectados }} de {{ p.capacidade.numeros }} nas campanhas ativas</dd>
+      <dt>Aguentam hoje</dt><dd>{{ p.capacidade.hoje }} envios ({{ p.capacidade.restante_hoje }} ainda livres) · até {{ p.capacidade.por_hora }} por hora</dd>
+      {% if p.meta %}
+      <dt>Para a meta</dt><dd>{{ p.capacidade.necessarios }} números a {{ p.volume.teto_por_numero }}/dia · {{ p.capacidade.com_reserva }} com reserva de 20%
+        {% if p.capacidade.faltam %}<span class="erro">· faltam {{ p.capacidade.faltam }}</span>{% endif %}</dd>
+      <dt>Meta fecha</dt><dd>
+        {% if p.capacidade.dias_meta == 0 %}já hoje{% elif p.capacidade.dias_meta %}em {{ p.capacidade.dias_meta }} dia(s), conforme a rampa{% else %}<span class="erro">só com mais números</span>{% endif %}</dd>
+      {% if p.carga_followup %}
+      <dt>Com follow-up</dt><dd>~{{ p.carga_followup }} follow-ups/dia em regime ({{ p.followup_passos }} passo(s)) · ~{{ p.capacidade.necessarios_com_followup }} números ·
+        {% if p.capacidade.dias_meta_com_followup == 0 %}já cabe hoje{% elif p.capacidade.dias_meta_com_followup %}cabe em {{ p.capacidade.dias_meta_com_followup }} dia(s){% else %}<span class="erro">precisa de mais números</span>{% endif %}</dd>
+      {% endif %}
+      {% endif %}
+      <dt>Taxa de resposta</dt><dd>{{ p.taxa_geral if p.taxa_geral is not none else "—" }}{% if p.taxa_geral is not none %}%{% endif %}</dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <h2>Estoque de leads</h2>
+    <div class="numeros-resumo">
+      <div><strong>{{ p.na_fila }}</strong><small>na fila das campanhas ativas</small></div>
+      {% if p.estoque_dias is not none %}<div><strong>{{ p.estoque_dias }}</strong><small>dias de meta</small></div>{% endif %}
+      <div><strong>{{ p.livres }}</strong><small>leads livres (sem campanha)</small></div>
+    </div>
+    <p class="muted" style="margin:0"><a href="/importar">Importar lista</a> · <a href="/buscas">Buscar no Google Maps</a> · <a href="/campanhas">Pôr leads numa campanha</a></p>
+  </div>
+
+  {% if p.linhas %}
+  <h2 style="margin-top:24px">Números</h2>
+  <div class="tabela-wrap">
+  <table>
+    <thead><tr><th>Número</th><th>Situação</th><th>Hoje</th><th>Última hora</th><th>Dia da rampa</th><th>Resposta</th></tr></thead>
+    <tbody>
+      {% for l in p.linhas %}{% set n = l.numero %}
+      <tr>
+        <td><a href="/numeros/{{ n.id }}">{{ n.nome_exibicao }}</a>{% if n.telefone %}<br><small>{{ n.telefone }}</small>{% endif %}</td>
+        <td><span class="status {{ n.status }}">{{ n.status.replace("_", " ") }}</span>{% if n.motivo_pausa and n.motivo_pausa != "manual" %}<br><small>{{ n.motivo_pausa }}</small>{% endif %}</td>
+        <td>{{ n.envios_hoje }}/{{ n.limite_diario_atual }}</td>
+        <td>{{ l.hora }}/{{ p.volume.limite_hora_numero }}</td>
+        <td>{{ l.dia_rampa or "—" }}</td>
+        <td>{% if l.taxa is not none %}{{ l.taxa }}% <small class="muted">de {{ l.enviados }}</small>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted" style="margin-top:16px">Nenhum número em campanha ativa. Conecte números e escolha-os na campanha.</p>
+  {% endif %}
+</div>

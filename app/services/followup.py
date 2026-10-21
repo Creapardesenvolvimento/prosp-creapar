@@ -122,7 +122,7 @@ def enviar_followup(
 
     passo = lead.followups_enviados + 1
     campanha = db.get(Campanha, lead.campanha_id)
-    texto = campanhas.renderizar(rng.choice(textos_do_passo(db, campanha, passo, len(dias))), lead)
+    texto = campanhas.renderizar(rng.choice(textos_do_passo(db, campanha, passo, len(dias))), lead, rng)
     envio = Envio(
         lead_id=lead.id, campanha_id=campanha.id, numero_id=numero.id, tipo=EnvioTipo.FOLLOW_UP,
         texto=texto, status=EnvioStatus.PENDENTE,

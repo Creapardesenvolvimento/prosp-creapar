@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Buscas{% endblock %}
 {% block content %}
-<h1>Buscas no Google Maps</h1>
+<div class="titulo">
+  <h1>Buscas no Google Maps</h1>
+  <a class="botao secundario" href="/importar">Importar lista (Excel, CSV, Word)</a>
+</div>
 
 {% if not apify_configurado %}
 <p class="alerta">O <code>APIFY_TOKEN</code> não está configurado no ambiente. As buscas vão falhar até ele ser preenchido.</p>
@@ -43,7 +46,7 @@
   <tbody>
     {% for b in buscas %}
     <tr>
-      <td><a href="/buscas/{{ b.id }}">{{ b.termo }} — {{ b.cidade }}</a></td>
+      <td><a href="/buscas/{{ b.id }}">{{ b.rotulo }}</a></td>
       <td><span class="status busca-{{ b.status }}">{{ b.status }}</span></td>
       <td>{{ b.total_encontrados if b.status == "concluida" else "—" }}</td>
       <td>{{ b.total_novos if b.status == "concluida" else "—" }}</td>

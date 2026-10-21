@@ -26,6 +26,7 @@ from app.services.campanhas import CampanhaError
 from app.services.config_sistema import CAMPOS, ConfigError
 from app.services.ia import IAError
 from app.services.mensagens import adicionar_blacklist
+from app.services.numeros import virada_do_dia as recalcular_limites
 from app.services.telefone import normalizar_telefone
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -269,6 +270,7 @@ async def salvar_config(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
     if form.get("restaurar"):
         config_sistema.restaurar_padroes(db)
+        recalcular_limites(db)
         db.commit()
         return RedirectResponse(f"/config?ok={quote('Padrões de fábrica restaurados.')}", status_code=303)
     # Dias vêm de checkboxes: nenhum marcado não aparece no formulário, mas é uma escolha (inválida).
@@ -281,6 +283,7 @@ async def salvar_config(request: Request, db: Session = Depends(get_db)):
     except ConfigError as exc:
         db.rollback()
         return RedirectResponse(f"/config?erro={quote(str(exc))}", status_code=303)
+    recalcular_limites(db)  # rampa e teto valem já hoje, não só a partir da virada
     db.commit()
     return RedirectResponse(f"/config?ok={quote('Configurações salvas.')}", status_code=303)
 

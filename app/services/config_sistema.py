@@ -52,6 +52,15 @@ CAMPOS = [
           "0 desliga a pausa automática.", 0, 100),
     Campo("pausa_janela_envios", "Proteção", "…medida nos últimos N envios", "inteiro",
           "Só conta envios com pelo menos 6 horas, para dar tempo de o lead responder.", 10, 1000),
+    Campo("pausa_falhas_seguidas", "Proteção", "Pausar número depois de N falhas seguidas no envio", "inteiro",
+          "Falha seguida costuma ser chip bloqueado ou sessão caída. 0 desliga.", 0, 20),
+    Campo("meta_diaria", "Super prospecção", "Meta de primeiras mensagens por dia (todos os números)", "inteiro",
+          "O sistema reparte a meta entre os números e espalha pelo horário de disparo. 0 = sem meta: cada número "
+          "envia até o próprio limite.", 0, 20000),
+    Campo("teto_por_numero", "Super prospecção", "Teto de envios por número por dia", "inteiro",
+          "Nenhum número passa disso, mesmo que a rampa permita. Conta primeira mensagem e follow-up.", 1, 500),
+    Campo("limite_hora_numero", "Super prospecção", "Máximo de envios por número por hora", "inteiro",
+          "Evita rajadas no mesmo chip.", 1, 60),
     Campo("reuniao_minutos", "Agenda", "Duração da reunião (minutos)", "inteiro", "", 10, 240),
     Campo("reuniao_buffer_minutos", "Agenda", "Intervalo entre reuniões (minutos)", "inteiro", "", 0, 120),
     Campo("agenda_antecedencia_horas", "Agenda", "Antecedência mínima (horas)", "inteiro", "", 0, 72),
@@ -69,6 +78,8 @@ CAMPOS = [
     Campo("resumo_automatico", "Notificações", "Enviar o resumo das reuniões do dia automaticamente", "simnao",
           "Vai para o WhatsApp de notificações, só nos dias com reunião."),
     Campo("resumo_hora", "Notificações", "Horário do resumo automático", "hora"),
+    Campo("alertar_chips", "Notificações", "Avisar quando um número cair ou for pausado", "simnao",
+          "Vai para o WhatsApp de notificações: desconexão, pausa por taxa de resposta ou por falhas seguidas."),
     Campo("ia_modelo", "Inteligência artificial", "Modelo", "texto",
           "Nome do modelo ou combo no OmniRouter (ex.: cc/claude-sonnet-5, auto/claude-sonnet)."),
     Campo("pitch_em_sequencia", "Inteligência artificial", "Mandar Interesse, Desejo e Ação em sequência", "simnao",
@@ -112,6 +123,11 @@ def padroes() -> dict:
         "rampa": s.rampa_limites,
         "pausa_taxa_minima": 5.0,
         "pausa_janela_envios": 50,
+        "pausa_falhas_seguidas": 3,
+        "meta_diaria": 0,
+        "teto_por_numero": 50,
+        "limite_hora_numero": 8,
+        "alertar_chips": True,
         "reuniao_minutos": s.reuniao_minutos,
         "reuniao_buffer_minutos": s.reuniao_buffer_minutos,
         "agenda_antecedencia_horas": s.agenda_antecedencia_horas,
@@ -250,4 +266,25 @@ def regras_disparo(db: Session) -> RegrasDisparo:
 
 
 def rampa(db: Session) -> Rampa:
-    return parse_rampa(valores(db)["rampa"])
+    """A rampa do painel, limitada pelo teto por número."""
+    v = valores(db)
+    teto = int(v["teto_por_numero"])
+    return [(dia, min(limite, teto)) for dia, limite in parse_rampa(v["rampa"])]
+
+
+@dataclass(frozen=True)
+class RegrasVolume:
+    meta_diaria: int  # 0 = sem meta
+    teto_por_numero: int
+    limite_hora_numero: int
+    falhas_seguidas: int  # 0 = não pausa
+
+
+def regras_volume(db: Session) -> RegrasVolume:
+    v = valores(db)
+    return RegrasVolume(
+        meta_diaria=int(v["meta_diaria"]),
+        teto_por_numero=int(v["teto_por_numero"]),
+        limite_hora_numero=int(v["limite_hora_numero"]),
+        falhas_seguidas=int(v["pausa_falhas_seguidas"]),
+    )

@@ -46,7 +46,7 @@
   <tbody>
     {% for l in leads %}
     <tr>
-      <td><a href="/leads/{{ l.id }}">{{ l.nome }}</a>{% if l.cidade %}<br><small>{{ l.cidade }}</small>{% endif %}</td>
+      <td><a href="/leads/{{ l.id }}">{{ l.nome or l.telefone }}</a>{% if l.cidade %}<br><small>{{ l.cidade }}</small>{% endif %}</td>
       <td>{{ l.telefone }}</td>
       <td>{{ l.segmento or "—" }}</td>
       <td>{{ l.porte or "—" }}</td>

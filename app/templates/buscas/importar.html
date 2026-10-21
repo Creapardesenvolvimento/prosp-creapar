@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Importar lista{% endblock %}
+{% block content %}
+<p><a href="/prospeccao">← Super prospecção</a></p>
+<h1>Importar lista de contatos</h1>
+
+<form method="post" action="/importar" enctype="multipart/form-data" class="card form">
+  {% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+  <label>Arquivo
+    <input type="file" name="arquivo" accept=".xlsx,.xls,.csv,.txt,.docx">
+    <small>Excel (.xlsx, .xls), CSV, TXT ou Word (.docx), até 10 MB e {{ maximo }} telefones.
+      Com cabeçalho, o sistema acha sozinho as colunas de telefone, nome, cidade e segmento. Sem cabeçalho, procura
+      o telefone em cada linha.</small>
+  </label>
+  <label>…ou cole os números
+    <textarea name="texto" rows="8" placeholder="Padaria Sol - (19) 99999-8888&#10;11 98888-7777&#10;Oficina do Zé;19 97777-6666">{{ valores.texto }}</textarea>
+    <small>Um contato por linha, com o nome antes ou depois do telefone (opcional). Dá para colar direto do Excel ou do Word.</small>
+  </label>
+  <label>Nome da lista
+    <input type="text" name="nome" value="{{ valores.nome }}" maxlength="200" placeholder="Ex.: Oficinas Campinas (lista da associação)">
+    <small>Sem nome, usa o nome do arquivo.</small>
+  </label>
+  <label>Cidade (opcional)
+    <input type="text" name="cidade" value="{{ valores.cidade }}" maxlength="200" placeholder="Campinas, SP">
+    <small>Usada nos contatos que não trazem a cidade. Entra no lugar de {cidade} nas mensagens.</small>
+  </label>
+  <label>Segmento (opcional)
+    <input type="text" name="segmento" value="{{ valores.segmento }}" maxlength="200" placeholder="oficina mecânica">
+    <small>Ajuda a Bruna a escolher o roteiro certo.</small>
+  </label>
+  <label>Mandar direto para a campanha (opcional)
+    <select name="campanha_id">
+      <option value="">— não, escolho depois —</option>
+      {% for c in campanhas %}<option value="{{ c.id }}" {% if valores.campanha_id == c.id|string %}selected{% endif %}>{{ c.nome }} ({{ c.status }})</option>{% endfor %}
+    </select>
+    <small>Depois de conferir o WhatsApp, os contatos novos entram na fila dela.</small>
+  </label>
+  <button type="submit">Importar</button>
+  <small class="muted">O sistema tira repetidos, quem está na blacklist e quem já é lead, e confere quem tem WhatsApp
+    (inclusive fixos, que podem ser WhatsApp Business). Contatos sem nome recebem "sua empresa" no lugar de {empresa}.</small>
+</form>
+
+{% if listas %}
+<h2 style="margin-top:24px">Listas importadas</h2>
+<div class="tabela-wrap">
+<table>
+  <thead><tr><th>Lista</th><th>Status</th><th>Telefones</th><th>Viraram lead</th><th>Quando</th></tr></thead>
+  <tbody>
+    {% for b in listas %}
+    <tr>
+      <td><a href="/buscas/{{ b.id }}">{{ b.termo }}</a></td>
+      <td><span class="status busca-{{ b.status }}">{{ b.status }}</span></td>
+      <td>{{ b.limite }}</td>
+      <td>{{ b.total_novos if b.status == "concluida" else "—" }}</td>
+      <td>{{ b.created_at.strftime("%d/%m %H:%M") if b.created_at else "" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

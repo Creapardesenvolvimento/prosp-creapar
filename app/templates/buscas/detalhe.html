@@ -1,19 +1,25 @@
 {% extends "base.html" %}
-{% block title %}Busca: {{ busca.termo }}{% endblock %}
+{% block title %}{{ busca.rotulo }}{% endblock %}
 {% block content %}
+{% if busca.importada %}
+<p><a href="/importar">← Listas importadas</a></p>
+<h1>{{ busca.rotulo }}</h1>
+<p class="muted">{{ busca.limite }} telefones lidos{% if busca.cidade %} · cidade padrão: {{ busca.cidade }}{% endif %}{% if campanha_destino %} · vai para a campanha <a href="/campanhas/{{ campanha_destino.id }}">{{ campanha_destino.nome }}</a>{% endif %}</p>
+{% else %}
 <p><a href="/buscas">← Buscas</a></p>
-<h1>{{ busca.termo }} — {{ busca.cidade }}</h1>
+<h1>{{ busca.rotulo }}</h1>
 <p class="muted">Até {{ busca.limite }} empresas · teto de gasto no Apify: US$ {{ "%.2f"|format(custo_maximo) }}</p>
+{% endif %}
 {% if erro_acao %}<p class="erro">{{ erro_acao }}</p>{% endif %}
 
 <div class="card">
   {% include "buscas/_status.html" %}
-  {% if busca.status == "erro" and busca.apify_dataset_id %}
+  {% if busca.status == "erro" and (busca.apify_dataset_id or tem_empresas) %}
   <form method="post" action="/buscas/{{ busca.id }}/reprocessar"><button>Reprocessar resultados</button></form>
   {% endif %}
 </div>
 
-{% if busca.status == "concluida" and not tem_empresas %}
+{% if busca.status == "concluida" and not tem_empresas and not busca.importada %}
 <div class="alerta" style="margin-top:16px">
   Esta busca foi feita antes de o sistema guardar todas as empresas. Enquanto o Apify ainda tiver o resultado
   (alguns dias), dá para trazer tudo para cá sem custo.
@@ -32,7 +38,7 @@
   <tbody>
     {% for l in leads %}
     <tr>
-      <td>{{ l.nome }}</td>
+      <td>{{ l.nome or "—" }}</td>
       <td>{{ l.telefone }}</td>
       <td>{{ l.categoria or "—" }}</td>
       <td>{{ l.cidade or "—" }}</td>
@@ -55,7 +61,7 @@
     <tbody>
       {% for e in descartadas %}
       <tr>
-        <td>{{ e.nome }}</td>
+        <td>{{ e.nome or "—" }}</td>
         <td>{{ e.telefone_original or "—" }}</td>
         <td>{{ motivos.get(e.descarte, e.descarte) }}</td>
         <td>{{ e.categoria or "—" }}</td>

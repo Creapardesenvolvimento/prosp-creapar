@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ lead.nome }}{% endblock %}
+{% block title %}{{ lead.nome or lead.telefone }}{% endblock %}
 {% block content %}
 <p><a href="/leads">← Leads</a></p>
 <div class="titulo">
-  <h1>{{ lead.nome }}</h1>
+  <h1>{{ lead.nome or lead.telefone }}</h1>
   <span class="status">{{ lead.status|replace("_", " ") }}</span>
   <div class="acoes">
     {% if lead.ia_ativa %}
@@ -28,7 +28,7 @@
 <div class="conversa">
   {% for m in historico %}
   <div class="msg {{ m.direcao }} autor-{{ m.autor }}">
-    <small>{{ {"lead": lead.nome, "ia": "Bruna (IA)", "sistema": "Abertura", "humano": "Time"}.get(m.autor, m.autor) }} · {{ local(m.created_at).strftime("%d/%m %H:%M") if m.created_at else "" }}</small>
+    <small>{{ {"lead": lead.nome or "Lead", "ia": "Bruna (IA)", "sistema": "Abertura", "humano": "Time"}.get(m.autor, m.autor) }} · {{ local(m.created_at).strftime("%d/%m %H:%M") if m.created_at else "" }}</small>
     <div>{% if m.tipo != "texto" %}<em>[{{ m.tipo }}]</em> {% endif %}{{ m.texto }}</div>
   </div>
   {% else %}

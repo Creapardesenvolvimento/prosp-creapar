@@ -203,6 +203,9 @@ def aplicar_estado(db: Session, numero: WhatsappNumber, state: str | None, reaso
             logger.warning(
                 "número desconectado, fora do rodízio", extra={"numero_id": numero.id, "motivo": reason}
             )
+            from app.services import alertas
+
+            alertas.avisar_chip(db, numero, "desconectado", "desconectou do WhatsApp (leia o QR de novo no painel)")
             return True
     return False
 
@@ -315,7 +318,7 @@ def conferir_conexoes(db: Session) -> int:
 def virada_do_dia(db: Session, agora: datetime | None = None) -> None:
     """Recalcula os envios de hoje e o limite de cada número pela rampa.
 
-    Os envios de hoje são contados nas aberturas enviadas desde a meia-noite (fuso do sistema),
+    Os envios de hoje são contados nas aberturas e follow-ups enviados desde a meia-noite (fuso do sistema),
     então rodar de novo no mesmo dia não devolve cota que já foi usada.
     """
     agora = agora or datetime.now(timezone.utc)
@@ -324,7 +327,11 @@ def virada_do_dia(db: Session, agora: datetime | None = None) -> None:
     enviados = dict(
         db.execute(
             select(Envio.numero_id, func.count())
-            .where(Envio.tipo == EnvioTipo.ABERTURA, Envio.status == EnvioStatus.ENVIADO, Envio.enviado_em >= meia_noite)
+            .where(
+                Envio.tipo.in_([EnvioTipo.ABERTURA, EnvioTipo.FOLLOW_UP]),
+                Envio.status == EnvioStatus.ENVIADO,
+                Envio.enviado_em >= meia_noite,
+            )
             .group_by(Envio.numero_id)
         ).all()
     )

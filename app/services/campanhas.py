@@ -4,6 +4,7 @@ As funções alteram a sessão mas não fazem commit.
 """
 
 import logging
+import random
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -58,9 +59,12 @@ def validar_texto(texto: str) -> str:
         raise CampanhaError("A mensagem está vazia.")
     if len(texto) > 1000:
         raise CampanhaError("A mensagem passou de 1000 caracteres.")
-    desconhecidos = {m for m in _MARCADOR.findall(texto)} - MARCADORES
+    # {a|b|c} é variação sorteada a cada envio; sem "|", só valem os marcadores conhecidos.
+    desconhecidos = {m for m in _MARCADOR.findall(texto) if "|" not in m} - MARCADORES
     if desconhecidos:
-        raise CampanhaError(f"Marcador desconhecido: {{{sorted(desconhecidos)[0]}}}. Use só {{empresa}} e {{cidade}}.")
+        raise CampanhaError(
+            f"Marcador desconhecido: {{{sorted(desconhecidos)[0]}}}. Use {{empresa}}, {{cidade}} ou variações como {{Oi|Olá}}."
+        )
     return texto
 
 
@@ -106,9 +110,25 @@ def gerar_mensagens_ia(db: Session, campanha: Campanha, quantidade: int = 10) ->
     return novas
 
 
-def renderizar(texto: str, lead: Lead) -> str:
+def sortear_variacoes(texto: str, rng: random.Random | None = None) -> str:
+    """ "{Oi|Olá}, tudo bem?" -> "Olá, tudo bem?" (uma alternativa sorteada para cada trecho)."""
+    rng = rng or random.Random()
+    return _MARCADOR.sub(lambda m: rng.choice(m.group(1).split("|")) if "|" in m.group(1) else m.group(0), texto)
+
+
+def contar_combinacoes(texto: str) -> int:
+    """Quantos textos diferentes uma mensagem com variações gera."""
+    total = 1
+    for marcador in _MARCADOR.findall(texto):
+        if "|" in marcador:
+            total *= len(set(marcador.split("|")))
+    return total
+
+
+def renderizar(texto: str, lead: Lead, rng: random.Random | None = None) -> str:
     cidade = (lead.cidade or "").strip() or "sua cidade"
-    texto = texto.replace("{empresa}", lead.nome.strip()).replace("{cidade}", cidade)
+    empresa = lead.nome.strip() or "sua empresa"  # listas importadas podem vir só com o telefone
+    texto = sortear_variacoes(texto, rng).replace("{empresa}", empresa).replace("{cidade}", cidade)
     return re.sub(r"[ \t]{2,}", " ", texto).strip()
 
 
