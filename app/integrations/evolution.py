@@ -112,6 +112,28 @@ class EvolutionClient:
                 resultado[item["number"]] = item.get("jid") if item.get("exists") else None
         return resultado
 
+    def set_proxy(
+        self, instance_name: str, *, protocol: str, host: str, port: str, username: str = "", password: str = ""
+    ) -> dict:
+        """Liga o proxy da instância (protocol: http ou socks5).
+
+        A Evolution testa o proxy antes de gravar (compara o IP de saída) e responde 400 "Invalid proxy" se falhar.
+        """
+        return self._request(
+            "POST",
+            f"/proxy/set/{quote(instance_name)}",
+            {"enabled": True, "host": host, "port": str(port), "protocol": protocol, "username": username, "password": password},
+        )
+
+    def disable_proxy(self, instance_name: str) -> dict:
+        # username/password vazios precisam ir no corpo: com só os quatro campos obrigatórios,
+        # o validador da Evolution exige host/port/protocol preenchidos.
+        return self._request(
+            "POST",
+            f"/proxy/set/{quote(instance_name)}",
+            {"enabled": False, "host": "", "port": "", "protocol": "", "username": "", "password": ""},
+        )
+
     def logout(self, instance_name: str) -> dict:
         return self._request("DELETE", f"/instance/logout/{quote(instance_name)}")
 

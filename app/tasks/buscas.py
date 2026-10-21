@@ -5,6 +5,7 @@ from app.db import SessionLocal
 from app.integrations.apify import ApifyError
 from app.integrations.evolution import EvolutionError
 from app.models import Busca
+from app.services import abastecimento
 from app.services import buscas as svc
 from app.services.buscas import BuscaError
 
@@ -54,3 +55,15 @@ def conferir_buscas() -> None:
         db.commit()
     for busca_id in prontas:
         processar_busca.delay(busca_id)
+
+
+@celery_app.task(name="buscas.abastecer")
+def abastecer() -> int | None:
+    """Beat: se a fila de leads baixou, dispara a próxima busca do plano."""
+    with SessionLocal() as db:
+        busca = abastecimento.abastecer(db)
+        db.commit()
+        busca_id = busca.id if busca else None
+    if busca_id:
+        iniciar_busca.delay(busca_id)
+    return busca_id

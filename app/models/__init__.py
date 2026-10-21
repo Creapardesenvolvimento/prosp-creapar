@@ -4,7 +4,7 @@ from app.models.empresas import Empresa
 from app.models.mensagens import Autor, Direcao, Mensagem
 from app.models.roteiros import ETAPAS, Etapa, Porte, Roteiro, Segmento
 from app.models.agenda import Reuniao, ReuniaoStatus, Vendedor, VendedorBloqueio, VendedorHorario
-from app.models.leads import Blacklist, Busca, BuscaStatus, Lead, LeadStatus
+from app.models.leads import Blacklist, Busca, BuscaStatus, Lead, LeadStatus, PlanoBusca
 from app.models.user import User
 from app.models.webhook_event import WebhookEvent
 from app.models.whatsapp import EvolutionServer, NumeroStatus, WhatsappNumber
@@ -33,6 +33,7 @@ __all__ = [
     "Lead",
     "LeadStatus",
     "NumeroStatus",
+    "PlanoBusca",
     "Reuniao",
     "ReuniaoStatus",
     "User",

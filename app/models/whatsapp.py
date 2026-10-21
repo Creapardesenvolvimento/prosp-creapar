@@ -48,10 +48,20 @@ class WhatsappNumber(Base):
     proximo_envio_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     motivo_pausa: Mapped[str | None] = mapped_column(String(200))
     webhook_versao: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Proxy próprio do número (vazio = sai pelo IP do servidor da Evolution). A senha fica criptografada.
+    proxy_protocolo: Mapped[str | None] = mapped_column(String(10))  # http | socks5
+    proxy_host: Mapped[str | None] = mapped_column(String(255))
+    proxy_porta: Mapped[str | None] = mapped_column(String(10))
+    proxy_usuario: Mapped[str | None] = mapped_column(String(255))
+    proxy_senha: Mapped[str | None] = mapped_column(EncryptedString)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    @property
+    def tem_proxy(self) -> bool:
+        return bool(self.proxy_host)
 
     server: Mapped[EvolutionServer] = relationship()
     substitui: Mapped["WhatsappNumber | None"] = relationship(remote_side=[id])

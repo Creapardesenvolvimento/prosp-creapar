@@ -44,8 +44,38 @@
   {% endif %}
 </dl>
 
+{% if numero.status not in ("removido", "banido") %}
+<form method="post" action="/numeros/{{ numero.id }}/proxy" class="card form proxy">
+  <h2>Proxy {% if numero.tem_proxy %}<span class="status conectado">ligado</span>{% endif %}</h2>
+  <p class="muted" style="margin:0">Com um proxy por número, cada chip sai por um IP diferente, e o WhatsApp não liga os
+    números pelo IP do servidor. Configure de preferência antes de ler o QR. A Evolution testa o proxy antes de aceitar;
+    num número já conectado, ele pode só valer depois de uma reconexão.</p>
+  <div class="proxy-campos">
+    <label>Protocolo
+      <select name="protocolo">
+        {% for p in ("http", "socks5") %}<option value="{{ p }}" {% if numero.proxy_protocolo == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Endereço <input type="text" name="host" value="{{ numero.proxy_host or "" }}" required maxlength="255" placeholder="proxy.exemplo.com"></label>
+    <label>Porta <input type="text" name="porta" value="{{ numero.proxy_porta or "" }}" required inputmode="numeric" maxlength="5" placeholder="8080"></label>
+    <label>Usuário <input type="text" name="usuario" value="{{ numero.proxy_usuario or "" }}" maxlength="255" autocomplete="off"></label>
+    <label>Senha <input type="password" name="senha" value="" maxlength="255" autocomplete="new-password"
+      placeholder="{{ "deixe em branco para manter" if numero.proxy_senha else "" }}"></label>
+  </div>
+  <div class="acoes">
+    <button type="submit">{{ "Atualizar proxy" if numero.tem_proxy else "Ligar proxy" }}</button>
+  </div>
+</form>
+{% if numero.tem_proxy %}
+<form method="post" action="/numeros/{{ numero.id }}/proxy/remover" style="margin-top:8px"
+      onsubmit="return confirm('Desligar o proxy? O número volta a sair pelo IP do servidor.')">
+  <button class="link perigo-link">Desligar proxy</button>
+</form>
+{% endif %}
+{% endif %}
+
 {% if numero.status != "removido" %}
-<div class="acoes">
+<div class="acoes" style="margin-top:16px">
   {% if numero.status == "conectado" %}
   <form method="post" action="/numeros/{{ numero.id }}/pausar"><button>Pausar</button></form>
   {% endif %}

@@ -108,6 +108,14 @@ class FakeEvolution:
         self._call("check_whatsapp", name, list(numbers))
         return {n: None if n in self.sem_whatsapp else f"{n}@s.whatsapp.net" for n in numbers}
 
+    def set_proxy(self, name, **kwargs):
+        self._call("set_proxy", name, kwargs)
+        return {}
+
+    def disable_proxy(self, name):
+        self._call("disable_proxy", name)
+        return {}
+
     def logout(self, name):
         self._call("logout", name)
 

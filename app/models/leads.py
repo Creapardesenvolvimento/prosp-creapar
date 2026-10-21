@@ -102,6 +102,24 @@ class Lead(Base):
     busca: Mapped[Busca | None] = relationship()
 
 
+class PlanoBusca(Base):
+    """Termo × cidade na fila do abastecimento automático: vira busca no Apify quando a fila de leads baixa."""
+
+    __tablename__ = "plano_buscas"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    termo: Mapped[str] = mapped_column(String(200))
+    cidade: Mapped[str] = mapped_column(String(200))
+    limite: Mapped[int] = mapped_column(Integer)
+    campanha_id: Mapped[int | None] = mapped_column(ForeignKey("campanhas.id", ondelete="SET NULL"))
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    busca_id: Mapped[int | None] = mapped_column(ForeignKey("buscas.id", ondelete="SET NULL"))  # a última feita
+    buscado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    busca: Mapped[Busca | None] = relationship()
+
+
 class Blacklist(Base):
     """Telefones que nunca mais recebem mensagem (opt-out ou bloqueio manual)."""
 

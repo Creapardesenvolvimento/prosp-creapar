@@ -166,6 +166,27 @@ def remover(numero_id: int, db: Session = Depends(get_db)):
     return _acao(db, numero_id, svc.remover)
 
 
+@router.post("/numeros/{numero_id}/proxy")
+def salvar_proxy(
+    numero_id: int,
+    protocolo: str = Form("http"),
+    host: str = Form(""),
+    porta: str = Form(""),
+    usuario: str = Form(""),
+    senha: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    return _acao(
+        db, numero_id,
+        lambda db, n: svc.definir_proxy(db, n, protocolo=protocolo, host=host, porta=porta, usuario=usuario, senha=senha),
+    )
+
+
+@router.post("/numeros/{numero_id}/proxy/remover")
+def remover_proxy(numero_id: int, db: Session = Depends(get_db)):
+    return _acao(db, numero_id, svc.remover_proxy)
+
+
 @router.post("/numeros/{numero_id}/banir")
 def banir(numero_id: int, db: Session = Depends(get_db)):
     """Marca como banido/perdido e já abre o cadastro do número substituto."""

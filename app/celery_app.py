@@ -16,6 +16,10 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     result_expires=3600,
     broker_connection_retry_on_startup=True,
+    # Filas separadas: com um worker só para "ia" (WORKER_QUEUES=ia), as respostas da Bruna não
+    # esperam atrás do disparo nem do processamento de listas grandes. O worker padrão consome todas.
+    task_default_queue="celery",
+    task_routes={"agente.*": {"queue": "ia"}, "disparo.*": {"queue": "disparo"}},
     beat_schedule={
         "conferir-conexoes": {
             "task": "numeros.conferir_conexoes",
@@ -24,6 +28,10 @@ celery_app.conf.update(
         "conferir-buscas": {
             "task": "buscas.conferir_andamento",
             "schedule": 120,
+        },
+        "abastecer-leads": {
+            "task": "buscas.abastecer",
+            "schedule": 600,
         },
         "disparo": {
             "task": "disparo.ciclo",

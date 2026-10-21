@@ -1,13 +1,16 @@
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_user, templates
+from app.config import get_settings
 from app.db import get_db
-from app.models import User
-from app.services import config_sistema, prospeccao
+from app.models import Campanha, CampanhaStatus, PlanoBusca, User
+from app.services import abastecimento, config_sistema, prospeccao
+from app.services.abastecimento import AbastecimentoError
 from app.services.config_sistema import ConfigError
 from app.services.numeros import virada_do_dia as recalcular_limites
 
@@ -22,9 +25,97 @@ def pagina(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
+    settings = get_settings()
+    campanhas = db.scalars(
+        select(Campanha).where(Campanha.status != CampanhaStatus.ENCERRADA).order_by(Campanha.created_at.desc())
+    ).all()
     return templates.TemplateResponse(
-        request, "prospeccao/pagina.html", {"user": user, "p": prospeccao.painel(db), "erro": erro, "ok": ok}
+        request,
+        "prospeccao/pagina.html",
+        {
+            "user": user,
+            "p": prospeccao.painel(db),
+            "ab": abastecimento.situacao(db),
+            "campanhas": campanhas,
+            "limite_maximo": settings.busca_limite_maximo,
+            "preco": settings.apify_preco_por_lugar,
+            "apify_configurado": bool(settings.apify_token),
+            "erro": erro,
+            "ok": ok,
+        },
     )
+
+
+def _voltar(erro: str | None = None, ok: str | None = None) -> RedirectResponse:
+    if erro:
+        return RedirectResponse(f"/prospeccao?erro={quote(erro)}#abastecimento", status_code=303)
+    return RedirectResponse(f"/prospeccao?ok={quote(ok or '')}#abastecimento", status_code=303)
+
+
+@router.post("/prospeccao/abastecimento")
+def salvar_abastecimento(
+    abastecer_ativo: str = Form(""),
+    abastecer_estoque_dias: str = Form(""),
+    abastecer_gasto_diario: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    try:
+        config_sistema.salvar(
+            db,
+            {
+                "abastecer_ativo": abastecer_ativo,
+                "abastecer_estoque_dias": abastecer_estoque_dias,
+                "abastecer_gasto_diario": abastecer_gasto_diario,
+            },
+        )
+    except ConfigError as exc:
+        db.rollback()
+        return _voltar(erro=str(exc))
+    db.commit()
+    return _voltar(ok="Abastecimento salvo.")
+
+
+@router.post("/prospeccao/plano")
+def adicionar_plano(
+    termo: str = Form(""),
+    cidades: str = Form(""),
+    limite: int = Form(100),
+    campanha_id: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    campanha = db.get(Campanha, int(campanha_id)) if campanha_id.isdigit() else None
+    try:
+        novos = abastecimento.adicionar_ao_plano(db, termo=termo, cidades=cidades, limite=limite, campanha=campanha)
+    except AbastecimentoError as exc:
+        db.rollback()
+        return _voltar(erro=str(exc))
+    db.commit()
+    return _voltar(ok=f"{novos} busca(s) entraram no plano." if novos else "Essas buscas já estavam no plano.")
+
+
+@router.post("/prospeccao/plano/{item_id}/remover")
+def remover_plano(item_id: int, db: Session = Depends(get_db)):
+    item = db.get(PlanoBusca, item_id)
+    if item is None:
+        raise HTTPException(status_code=404)
+    abastecimento.remover_do_plano(db, item)
+    db.commit()
+    return _voltar(ok="Removida do plano.")
+
+
+@router.post("/prospeccao/abastecer-agora")
+def abastecer_agora(db: Session = Depends(get_db)):
+    from app.tasks.buscas import iniciar_busca
+
+    busca = abastecimento.abastecer(db)
+    db.commit()
+    if busca is None:
+        return _voltar(
+            erro="Nada a buscar agora: abastecimento desligado, fila acima do alvo, busca em andamento, "
+            "teto de gasto do dia atingido ou plano sem buscas pendentes."
+        )
+    iniciar_busca.delay(busca.id)
+    return _voltar(ok=f"Busca iniciada: {busca.termo} — {busca.cidade}.")
 
 
 @router.get("/prospeccao/painel")

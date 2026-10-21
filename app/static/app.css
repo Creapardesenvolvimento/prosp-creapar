@@ -175,3 +175,5 @@ textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--border); bo
 .metas { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; align-items: start; }
 .metas button { align-self: center; }
 .numeros-resumo strong small { font-size: 14px; font-weight: normal; }
+.form.proxy { max-width: none; }
+.proxy-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }

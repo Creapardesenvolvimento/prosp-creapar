@@ -244,6 +244,57 @@ def reconectar(db: Session, numero: WhatsappNumber) -> None:
     logger.info("reconexão solicitada", extra={"numero_id": numero.id})
 
 
+PROTOCOLOS_PROXY = ("http", "socks5")  # os que a Evolution 2.3.7 aceita para a conexão do WhatsApp
+
+
+def definir_proxy(
+    db: Session, numero: WhatsappNumber, *, protocolo: str, host: str, porta: str, usuario: str = "", senha: str = ""
+) -> None:
+    """Liga um proxy próprio no número. Só grava se a Evolution aceitar (ela testa o proxy antes)."""
+    if numero.status in (NumeroStatus.BANIDO, NumeroStatus.REMOVIDO):
+        raise NumeroError("Este número não está mais em uso.")
+    protocolo, host, porta, usuario = protocolo.strip().lower(), host.strip(), porta.strip(), usuario.strip()
+    if protocolo not in PROTOCOLOS_PROXY:
+        raise NumeroError("Protocolo do proxy: use http ou socks5.")
+    if not host or "://" in host or any(c.isspace() or c in "@/" for c in host):
+        raise NumeroError("Informe só o endereço do proxy (ex.: proxy.exemplo.com ou 200.1.2.3), sem http://.")
+    if not porta.isdigit() or not 1 <= int(porta) <= 65535:
+        raise NumeroError("Porta do proxy inválida.")
+    if not senha and usuario and usuario == (numero.proxy_usuario or "") and numero.proxy_senha:
+        senha = numero.proxy_senha  # campo de senha em branco: mantém a atual
+    if bool(usuario) != bool(senha):
+        raise NumeroError("Informe usuário e senha do proxy, ou deixe os dois em branco.")
+    # A Evolution monta protocolo://usuario:senha@host sem codificar: estes caracteres quebrariam o endereço.
+    if any(c in usuario for c in "@/:") or any(c in senha for c in "@/"):
+        raise NumeroError("Usuário e senha do proxy não podem ter @, / (nem : no usuário).")
+    try:
+        evolution.get_client(numero.server).set_proxy(
+            numero.instance_name, protocol=protocolo, host=host, port=porta, username=usuario, password=senha
+        )
+    except EvolutionError as exc:
+        if exc.status == 400:
+            raise NumeroError(
+                "A Evolution testou o proxy e ele não funcionou (o IP de saída não mudou ou a conexão falhou). "
+                "Confira endereço, porta, protocolo e login."
+            ) from exc
+        raise NumeroError(f"Não consegui configurar o proxy: {exc}") from exc
+    numero.proxy_protocolo, numero.proxy_host, numero.proxy_porta = protocolo, host, porta
+    numero.proxy_usuario, numero.proxy_senha = usuario or None, senha or None
+    logger.info("proxy configurado", extra={"numero_id": numero.id, "host": host, "protocolo": protocolo})
+
+
+def remover_proxy(db: Session, numero: WhatsappNumber) -> None:
+    if not numero.tem_proxy:
+        raise NumeroError("Este número não tem proxy.")
+    if numero.status not in (NumeroStatus.BANIDO, NumeroStatus.REMOVIDO):
+        try:
+            evolution.get_client(numero.server).disable_proxy(numero.instance_name)
+        except EvolutionError as exc:
+            raise NumeroError(f"Não consegui desligar o proxy: {exc}") from exc
+    numero.proxy_protocolo = numero.proxy_host = numero.proxy_porta = numero.proxy_usuario = numero.proxy_senha = None
+    logger.info("proxy removido", extra={"numero_id": numero.id})
+
+
 def liberar_envios_pendentes(db: Session, numero: WhatsappNumber) -> int:
     """Devolve à fila geral os envios pendentes do número.
 

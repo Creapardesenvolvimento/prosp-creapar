@@ -13,7 +13,7 @@
   <thead>
     <tr>
       <th>Nome</th><th>Telefone</th><th>Status</th><th>Dia da rampa</th>
-      <th>Envios hoje / limite</th><th>Servidor</th>
+      <th>Envios hoje / limite</th><th>Servidor</th><th>Proxy</th>
     </tr>
   </thead>
   <tbody>
@@ -25,6 +25,7 @@
       <td>{{ dia_de_rampa(n) or "—" }}</td>
       <td>{{ n.envios_hoje }} / {{ n.limite_diario_atual }}</td>
       <td>{{ n.server.nome }}</td>
+      <td>{{ n.proxy_host if n.tem_proxy else "—" }}</td>
     </tr>
     {% endfor %}
   </tbody>

@@ -26,6 +26,74 @@
 
 {% include "prospeccao/_painel.html" %}
 
+<div class="card" id="abastecimento" style="margin-top:16px">
+  <h2>Abastecimento automático <span class="status {{ 'conectado' if ab.ativo else '' }}">{{ "ligado" if ab.ativo else "desligado" }}</span></h2>
+  {% if not apify_configurado %}<p class="alerta">O <code>APIFY_TOKEN</code> não está configurado: o abastecimento não roda.</p>{% endif %}
+  <p class="muted" style="margin-top:0">A cada 10 minutos, se a fila tiver menos de {{ ab.alvo }} leads
+    ({{ ab.estoque_dias|string|replace(".", ",") }} dia(s) de meta), o sistema faz a próxima busca do plano no Google Maps.
+    Uma por vez, e os leads novos entram direto na campanha escolhida.</p>
+  <div class="numeros-resumo">
+    <div><strong>{{ ab.na_fila }}<small class="muted">/{{ ab.alvo }}</small></strong><small>na fila / alvo</small></div>
+    <div><strong>US$ {{ "%.2f"|format(ab.gasto_hoje) }}<small class="muted">/{{ "%.2f"|format(ab.teto) }}</small></strong><small>gasto no Apify hoje / teto</small></div>
+    <div><strong>{{ ab.itens|selectattr("buscado_em", "none")|list|length }}</strong><small>buscas pendentes no plano</small></div>
+  </div>
+  {% if ab.em_curso %}<p>Em andamento: <a href="/buscas/{{ ab.em_curso.id }}">{{ ab.em_curso.rotulo }}</a> <span class="status busca-{{ ab.em_curso.status }}">{{ ab.em_curso.status }}</span></p>{% endif %}
+
+  <form method="post" action="/prospeccao/abastecimento" class="metas">
+    <label class="check"><input type="checkbox" name="abastecer_ativo" value="1" {% if ab.ativo %}checked{% endif %}> Abastecer sozinho</label>
+    <label>Manter na fila (dias de meta)
+      <input type="number" name="abastecer_estoque_dias" value="{{ ab.estoque_dias }}" min="0.5" max="30" step="0.5" required>
+    </label>
+    <label>Teto de gasto por dia (US$)
+      <input type="number" name="abastecer_gasto_diario" value="{{ ab.teto }}" min="0.5" max="1000" step="0.5" required>
+    </label>
+    <button type="submit">Salvar</button>
+  </form>
+
+  <h3 style="margin:20px 0 8px">Plano de buscas</h3>
+  <form method="post" action="/prospeccao/plano" class="metas">
+    <label>O que buscar <input type="text" name="termo" required maxlength="200" placeholder="oficina mecânica"></label>
+    <label>Cidades (uma por linha)
+      <textarea name="cidades" rows="3" required placeholder="Campinas, SP&#10;Sorocaba, SP&#10;Jundiaí, SP"></textarea>
+    </label>
+    <label>Máximo de empresas por busca
+      <input type="number" name="limite" value="200" min="1" max="{{ limite_maximo }}" required>
+      <small>Até US$ {{ "%.2f"|format(200 * preco) }} por busca de 200.</small>
+    </label>
+    <label>Campanha que recebe os leads
+      <select name="campanha_id" required>
+        <option value="">— escolha —</option>
+        {% for c in campanhas %}<option value="{{ c.id }}">{{ c.nome }} ({{ c.status }})</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit">Adicionar ao plano</button>
+  </form>
+
+  {% if ab.itens %}
+  <div class="tabela-wrap" style="margin-top:16px">
+  <table>
+    <thead><tr><th>Busca</th><th>Máximo</th><th>Campanha</th><th>Situação</th><th></th></tr></thead>
+    <tbody>
+      {% for item in ab.itens %}
+      <tr>
+        <td>{{ item.termo }} — {{ item.cidade }}</td>
+        <td>{{ item.limite }}</td>
+        <td>{% set c = campanhas|selectattr("id", "equalto", item.campanha_id)|first %}{{ c.nome if c else "campanha encerrada" }}</td>
+        <td>{% if item.busca %}<a href="/buscas/{{ item.busca.id }}">buscado em {{ item.buscado_em.strftime("%d/%m") }}</a>
+              {% if item.busca.status == "concluida" %}<small class="muted">· {{ item.busca.total_novos }} leads</small>{% else %}<span class="status busca-{{ item.busca.status }}">{{ item.busca.status }}</span>{% endif %}
+            {% else %}<span class="muted">aguardando</span>{% endif %}</td>
+        <td><form method="post" action="/prospeccao/plano/{{ item.id }}/remover"><button class="link perigo-link">remover</button></form></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <form method="post" action="/prospeccao/abastecer-agora" style="margin-top:8px"><button class="secundario">Conferir e buscar agora</button></form>
+  {% else %}
+  <p class="muted">O plano está vazio. Adicione termos e cidades para o sistema buscar sozinho.</p>
+  {% endif %}
+</div>
+
 <p class="muted" style="margin-top:16px">
   Horário, intervalos, rampa, pausa por falhas e avisos de número caído ficam em <a href="/config">Configurações</a>.
   Variações nas mensagens da campanha, como <code>{Oi|Olá|Bom dia}</code>, fazem cada envio sair com um texto diferente.

@@ -8,7 +8,8 @@ case "${ROLE:-api}" in
     exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'
     ;;
   worker)
-    exec celery -A app.celery_app worker --loglevel=info --concurrency="${WORKER_CONCURRENCY:-4}"
+    # WORKER_QUEUES escolhe as filas (padrão: todas). Ex.: um serviço com "ia" e outro com "celery,disparo".
+    exec celery -A app.celery_app worker --loglevel=info --concurrency="${WORKER_CONCURRENCY:-4}" -Q "${WORKER_QUEUES:-celery,ia,disparo}"
     ;;
   beat)
     exec celery -A app.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
