@@ -12,6 +12,7 @@ from app.models import Campanha, CampanhaStatus, PlanoBusca, User
 from app.services import abastecimento, config_sistema, prospeccao
 from app.services.abastecimento import AbastecimentoError
 from app.services.config_sistema import ConfigError
+from app.services.prospeccao import ProspeccaoError
 from app.services.numeros import virada_do_dia as recalcular_limites
 
 router = APIRouter(dependencies=[Depends(current_user)])
@@ -116,6 +117,23 @@ def abastecer_agora(db: Session = Depends(get_db)):
         )
     iniciar_busca.delay(busca.id)
     return _voltar(ok=f"Busca iniciada: {busca.termo} — {busca.cidade}.")
+
+
+@router.post("/prospeccao/puxar-numeros")
+def puxar_numeros(db: Session = Depends(get_db)):
+    """Confere a conexão de todos os números na Evolution e põe os disponíveis nas campanhas ativas."""
+    from app.services.numeros import conferir_conexoes
+
+    conferir_conexoes(db)  # atualiza conectado/desconectado antes de puxar (faz commit por número)
+    try:
+        campanhas, novos = prospeccao.puxar_numeros(db)
+    except ProspeccaoError as exc:
+        db.rollback()
+        return RedirectResponse(f"/prospeccao?erro={quote(str(exc))}", status_code=303)
+    recalcular_limites(db)
+    db.commit()
+    texto = f"{novos} número(s) entraram em {campanhas} campanha(s) ativa(s)." if novos else "Todos os números já estavam nas campanhas ativas."
+    return RedirectResponse(f"/prospeccao?ok={quote(texto + ' Conexões atualizadas.')}", status_code=303)
 
 
 @router.get("/prospeccao/painel")

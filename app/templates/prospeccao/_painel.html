@@ -56,12 +56,13 @@
   <h2 style="margin-top:24px">Números</h2>
   <div class="tabela-wrap">
   <table>
-    <thead><tr><th>Número</th><th>Situação</th><th>Hoje</th><th>Última hora</th><th>Dia da rampa</th><th>Resposta</th></tr></thead>
+    <thead><tr><th>Número</th><th>Situação</th><th>Campanha ativa</th><th>Hoje</th><th>Última hora</th><th>Dia da rampa</th><th>Resposta</th></tr></thead>
     <tbody>
       {% for l in p.linhas %}{% set n = l.numero %}
       <tr>
         <td><a href="/numeros/{{ n.id }}">{{ n.nome_exibicao }}</a>{% if n.telefone %}<br><small>{{ n.telefone }}</small>{% endif %}</td>
         <td><span class="status {{ n.status }}">{{ n.status.replace("_", " ") }}</span>{% if n.motivo_pausa and n.motivo_pausa != "manual" %}<br><small>{{ n.motivo_pausa }}</small>{% endif %}</td>
+        <td>{% if l.em_campanha %}sim{% else %}<span class="erro">não</span>{% endif %}</td>
         <td>{{ n.envios_hoje }}/{{ n.limite_diario_atual }}</td>
         <td>{{ l.hora }}/{{ p.volume.limite_hora_numero }}</td>
         <td>{{ l.dia_rampa or "—" }}</td>
@@ -72,6 +73,6 @@
   </table>
   </div>
   {% else %}
-  <p class="muted" style="margin-top:16px">Nenhum número em campanha ativa. Conecte números e escolha-os na campanha.</p>
+  <p class="muted" style="margin-top:16px">Nenhum número cadastrado. <a href="/numeros/novo">Cadastrar número</a></p>
   {% endif %}
 </div>

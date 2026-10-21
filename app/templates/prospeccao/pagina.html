@@ -5,6 +5,10 @@
   <h1>Super prospecção</h1>
   <a class="botao" href="/importar">Importar lista</a>
   <a class="botao secundario" href="/buscas">Nova busca</a>
+  <form method="post" action="/prospeccao/puxar-numeros" style="margin:0"
+        onsubmit="this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Puxando…'">
+    <button class="secundario" title="Confere a conexão de todos os números e coloca os disponíveis nas campanhas ativas">Puxar todos os números</button>
+  </form>
 </div>
 {% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
 {% if ok %}<p class="ok">{{ ok }}</p>{% endif %}

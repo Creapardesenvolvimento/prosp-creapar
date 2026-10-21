@@ -25,6 +25,7 @@ from app.services import config_sistema, disparo, followup
 from app.services.agenda import como_utc, utc
 from app.services.rampa import Rampa, dia_de_rampa, limite_para_dia
 
+FORA_DE_USO = (NumeroStatus.BANIDO, NumeroStatus.REMOVIDO)
 RESERVA = 1.2  # 20% de números a mais, para cobrir os que forem pausados ou caírem
 ESTOQUE_MINIMO_DIAS = 1.5
 HORIZONTE_DIAS = 60
@@ -44,6 +45,36 @@ def numeros_da_prospeccao(db: Session) -> list[WhatsappNumber]:
             .order_by(WhatsappNumber.id)
         )
     )
+
+
+class ProspeccaoError(Exception):
+    pass
+
+
+def numeros_cadastrados(db: Session) -> list[WhatsappNumber]:
+    """Todos os números ainda em uso (qualquer situação, menos banidos e removidos)."""
+    return list(db.scalars(select(WhatsappNumber).where(WhatsappNumber.status.not_in(FORA_DE_USO)).order_by(WhatsappNumber.id)))
+
+
+def puxar_numeros(db: Session) -> tuple[int, int]:
+    """Coloca todos os números cadastrados em todas as campanhas ativas. Retorna (campanhas, números novos nelas).
+
+    Quem não está conectado entra também: o disparo só usa os conectados, então ele passa a enviar
+    sozinho assim que conectar.
+    """
+    ativas = db.scalars(select(Campanha).where(Campanha.status == CampanhaStatus.ATIVA)).all()
+    if not ativas:
+        raise ProspeccaoError("Nenhuma campanha ativa para receber os números. Ative uma campanha primeiro.")
+    disponiveis = numeros_cadastrados(db)
+    adicionados = set()
+    for campanha in ativas:
+        ja = {n.id for n in campanha.numeros}
+        for numero in disponiveis:
+            if numero.id not in ja:
+                campanha.numeros.append(numero)
+                adicionados.add(numero.id)
+    db.flush()
+    return len(ativas), len(adicionados)
 
 
 def capacidade_no_dia(conectados: list[WhatsappNumber], rampa: Rampa, agora: datetime, dias_a_frente: int) -> int:
@@ -103,16 +134,21 @@ def painel(db: Session, agora: datetime | None = None) -> dict:
     esperado_agora = round(meta * fracao) if meta and local.weekday() in regras.dias else 0
 
     numeros = numeros_da_prospeccao(db)
+    na_prospeccao = {n.id for n in numeros}
     conectados = [n for n in numeros if n.status == NumeroStatus.CONECTADO]
+    cadastrados = numeros_cadastrados(db)
+    fora = [n for n in cadastrados if n.id not in na_prospeccao]
     na_hora = disparo.envios_por_numero(db, hora_atras)
     taxas = _taxas_por_numero(db)
     tz = get_settings().timezone
     linhas = []
-    for n in numeros:
+    # A tabela mostra todos os cadastrados; só os que estão em campanha ativa contam na capacidade.
+    for n in sorted(cadastrados, key=lambda n: (n.id not in na_prospeccao, n.id)):
         enviados, respostas = taxas.get(n.id, (0, 0))
         linhas.append(
             {
                 "numero": n,
+                "em_campanha": n.id in na_prospeccao,
                 "dia_rampa": dia_de_rampa(n.data_ativacao, agora, tz) if n.data_ativacao else None,
                 "hora": na_hora.get(n.id, 0),
                 "enviados": enviados,
@@ -159,6 +195,11 @@ def painel(db: Session, agora: datetime | None = None) -> dict:
     estoque_dias = round(na_fila / meta, 1) if meta else None
 
     avisos = []
+    if fora:
+        avisos.append(
+            f"{len(fora)} número(s) cadastrado(s) fora das campanhas ativas não entram no disparo. "
+            "Use \"Puxar todos os números\" para incluí-los."
+        )
     if not meta:
         avisos.append("Defina a meta do dia para o sistema repartir o volume entre os números.")
     else:
@@ -200,5 +241,6 @@ def painel(db: Session, agora: datetime | None = None) -> dict:
         "livres": livres,
         "estoque_dias": estoque_dias,
         "linhas": linhas,
+        "fora": len(fora),
         "avisos": avisos,
     }

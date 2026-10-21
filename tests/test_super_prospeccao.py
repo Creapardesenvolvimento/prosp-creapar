@@ -207,3 +207,42 @@ def test_tela_da_super_prospeccao(logged_client, db, server, evo):
     resp = logged_client.post("/prospeccao/metas", data={"meta_diaria": "-1", "teto_por_numero": "50", "limite_hora_numero": "8"})
     assert "erro=" in resp.headers["location"]
     assert "Super prospecção" in logged_client.get("/").text
+
+
+# --- puxar números -------------------------------------------------------------------
+
+
+def test_puxar_todos_os_numeros(db, server, evo):
+    from app.services.prospeccao import ProspeccaoError
+
+    a = criar_numero(db, server, "Chip A", 10)
+    b = criar_numero(db, server, "Chip B", 10)
+    banido = criar_numero(db, server, "Chip C", 10)
+    banido.status = NumeroStatus.BANIDO
+    db.commit()
+    with pytest.raises(ProspeccaoError, match="Nenhuma campanha ativa"):
+        prospeccao.puxar_numeros(db)
+
+    c1 = criar_campanha(db, [a])
+    c2 = criar_campanha(db, [])
+    p = prospeccao.painel(db, SEGUNDA_9H)
+    assert p["fora"] == 1 and [l["em_campanha"] for l in p["linhas"]] == [True, False]
+    assert any("fora das campanhas" in aviso for aviso in p["avisos"])
+
+    assert prospeccao.puxar_numeros(db) == (2, 2)
+    assert {n.id for n in c1.numeros} == {a.id, b.id} and {n.id for n in c2.numeros} == {a.id, b.id}
+    assert prospeccao.puxar_numeros(db) == (2, 0)
+    assert prospeccao.painel(db, SEGUNDA_9H)["fora"] == 0
+
+
+def test_botao_puxar_numeros(logged_client, db, server, evo):
+    a = criar_numero(db, server, "Chip A", 10)
+    criar_numero(db, server, "Chip B", 10)
+    assert "Puxar todos os números" in logged_client.get("/prospeccao").text
+    assert "erro=" in logged_client.post("/prospeccao/puxar-numeros").headers["location"]
+
+    criar_campanha(db, [a])
+    resp = logged_client.post("/prospeccao/puxar-numeros")
+    assert "ok=" in resp.headers["location"] and evo.called("connection_state")
+    pagina = logged_client.get("/prospeccao").text
+    assert "Chip B" in pagina and "fora das campanhas" not in pagina
