@@ -75,7 +75,7 @@ def criar(
     lead.tentativas_envio = 0
     db.flush()
 
-    envio = disparo.enviar_abertura(db, numero, lead, datetime.now(timezone.utc), random.Random())
+    envio = disparo.enviar_abertura(db, numero, lead, datetime.now(timezone.utc), random.Random(), conferir_historico=False)
     if envio is None or envio.status != EnvioStatus.ENVIADO:
         raise LeadTesteError(f"A abertura não foi enviada: {envio.erro if envio else 'telefone bloqueado'}")
     logger.info("lead de teste criado", extra={"lead_id": lead.id, "numero_id": numero.id, "campanha_id": campanha.id})

@@ -26,6 +26,7 @@ class LeadStatus(StrEnum):
     HUMANO_ASSUMIU = "humano_assumiu"
     OPT_OUT = "opt_out"
     SEM_RESPOSTA = "sem_resposta"
+    JA_PROSPECTADO = "ja_prospectado"  # tirado da fila: ele (ou o mesmo WhatsApp em outro cadastro) já foi abordado
 
 
 class Busca(Base):

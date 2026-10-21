@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.integrations import apify, evolution
 from app.models import Blacklist, Busca, BuscaStatus, Empresa, Lead, LeadStatus, NumeroStatus, User, WhatsappNumber
+from app.services import historico
 from app.services.telefone import eh_celular, normalizar_telefone, para_evolution
 
 logger = logging.getLogger(__name__)
@@ -254,11 +255,23 @@ def processar(db: Session, busca: Busca, pausa_entre_lotes: float = 1.0) -> None
                 del candidatos[telefone]
 
     jids = validar_whatsapp(db, list(candidatos), pausa_entre_lotes) if candidatos else {}
+    # O mesmo WhatsApp pode vir com outro telefone (celular antigo sem o 9): o jid é o que identifica.
+    jid_cadastrado = historico.jids_ja_cadastrados(db, [j for j in jids.values() if j])
+    jids_da_busca: set[str] = set()
     novos = 0
     for telefone, empresa in candidatos.items():
-        if not jids.get(telefone):
+        jid = jids.get(telefone)
+        if not jid:
             descartar(empresa, "sem_whatsapp")
             continue
+        if jid in jid_cadastrado:
+            descartar(empresa, "ja_era_lead")
+            empresa.lead_id = jid_cadastrado[jid]
+            continue
+        if jid in jids_da_busca:
+            descartar(empresa, "repetido_na_busca")
+            continue
+        jids_da_busca.add(jid)
         lead = Lead(
             busca_id=busca.id,
             nome=empresa.nome,

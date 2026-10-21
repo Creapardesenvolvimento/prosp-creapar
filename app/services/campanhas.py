@@ -27,7 +27,7 @@ from app.models import (
     Reuniao,
     WhatsappNumber,
 )
-from app.services import config_sistema, ia
+from app.services import config_sistema, historico, ia
 from app.services.agenda import como_utc
 
 logger = logging.getLogger(__name__)
@@ -151,19 +151,25 @@ def adicionar_leads(db: Session, campanha: Campanha, busca_ids: list[int]) -> in
     if not busca_ids:
         raise CampanhaError("Escolha pelo menos uma busca.")
     bloqueados = select(Blacklist.telefone)
+    livres = (Lead.busca_id.in_(busca_ids), Lead.status == LeadStatus.NOVO, Lead.campanha_id.is_(None))
+    # Quem já foi abordado (ou tem o mesmo WhatsApp de quem foi) sai da lista de disponíveis de vez.
+    ja = db.execute(
+        update(Lead)
+        .where(*livres, historico.condicao_ja_prospectado())
+        .values(status=LeadStatus.JA_PROSPECTADO)
+        .execution_options(synchronize_session=False)
+    )
     result = db.execute(
         update(Lead)
-        .where(
-            Lead.busca_id.in_(busca_ids),
-            Lead.status == LeadStatus.NOVO,
-            Lead.campanha_id.is_(None),
-            Lead.telefone.not_in(bloqueados),
-        )
+        .where(*livres, Lead.telefone.not_in(bloqueados))
         .values(campanha_id=campanha.id, status=LeadStatus.NA_FILA)
         .execution_options(synchronize_session=False)
     )
     db.flush()
-    logger.info("leads adicionados à campanha", extra={"campanha_id": campanha.id, "total": result.rowcount})
+    logger.info(
+        "leads adicionados à campanha",
+        extra={"campanha_id": campanha.id, "total": result.rowcount, "ja_prospectados": ja.rowcount},
+    )
     return result.rowcount
 
 
@@ -207,7 +213,7 @@ FASES_PROGRESSO = [
     ("conversa", "Em conversa", [LeadStatus.RESPONDEU, LeadStatus.EM_CONVERSA]),
     ("humano", "Com humano", [LeadStatus.HUMANO_ASSUMIU]),
     ("aguardando", "Aguardando resposta", [LeadStatus.ENVIADO]),
-    ("encerrado", "Encerrados", [LeadStatus.SEM_INTERESSE, LeadStatus.OPT_OUT, LeadStatus.SEM_RESPOSTA]),
+    ("encerrado", "Encerrados", [LeadStatus.SEM_INTERESSE, LeadStatus.OPT_OUT, LeadStatus.SEM_RESPOSTA, LeadStatus.JA_PROSPECTADO]),
     ("fila", "Na fila", [LeadStatus.NA_FILA]),
 ]
 

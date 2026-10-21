@@ -34,7 +34,7 @@ from app.models import (
     WhatsappNumber,
 )
 from app.models.campanhas import campanha_numeros
-from app.services import alertas, campanhas, config_sistema, followup
+from app.services import alertas, campanhas, config_sistema, followup, historico
 from app.services import numeros as numeros_svc
 from app.services.agente import marcar_como_do_sistema
 from app.services.agenda import como_utc, utc
@@ -44,6 +44,7 @@ from app.services.telefone import para_evolution
 logger = logging.getLogger(__name__)
 
 MAX_TENTATIVAS = 3
+MAX_PULOS = 10  # leads tirados da fila seguidos que um número pula num ciclo
 ESPERA_RESPOSTA = timedelta(hours=6)  # envios mais novos que isso não contam na taxa de resposta
 
 
@@ -192,10 +193,18 @@ def escolher_mensagem(db: Session, campanha: Campanha, numero: WhatsappNumber, r
     return rng.choice(ativas)
 
 
-def enviar_abertura(db: Session, numero: WhatsappNumber, lead: Lead, agora: datetime, rng: random.Random) -> Envio | None:
+def enviar_abertura(
+    db: Session, numero: WhatsappNumber, lead: Lead, agora: datetime, rng: random.Random, conferir_historico: bool = True
+) -> Envio | None:
+    """conferir_historico=False só para o lead de teste, que é reiniciado de propósito."""
     if db.scalar(select(Blacklist.id).where(Blacklist.telefone == lead.telefone)):
         lead.status = LeadStatus.OPT_OUT
         logger.info("lead na blacklist retirado da fila", extra={"lead_id": lead.id})
+        return None
+    motivo = historico.motivo_ja_prospectado(db, lead) if conferir_historico else None
+    if motivo:
+        lead.status, lead.numero_id = LeadStatus.JA_PROSPECTADO, None
+        logger.info("lead já prospectado retirado da fila", extra={"lead_id": lead.id, "motivo": motivo})
         return None
     campanha = db.get(Campanha, lead.campanha_id)
     mensagem = escolher_mensagem(db, campanha, numero, rng)
@@ -332,10 +341,16 @@ def ciclo(db: Session, agora: datetime | None = None, rng: random.Random | None 
         else:
             # Meta do dia (ou da hora) batida: as campanhas super param; as normais do número seguem.
             meta_batida = bool(meta) and (aberturas_hoje >= meta or aberturas_hora >= teto_hora)
-            lead = reservar_lead(db, numero, sem_campanhas=super_ids if meta_batida else None)
-            if lead is None:
+            # Lead tirado da fila (blacklist, já prospectado) não gasta a vez do número: tenta o próximo.
+            for _ in range(MAX_PULOS):
+                lead = reservar_lead(db, numero, sem_campanhas=super_ids if meta_batida else None)
+                envio = enviar_abertura(db, numero, lead, agora, rng) if lead is not None else None
+                if lead is None or envio is not None:
+                    break
+                db.commit()
+            if lead is None or envio is None:
+                db.commit()
                 continue
-            envio = enviar_abertura(db, numero, lead, agora, rng)
             if envio is not None and envio.status == EnvioStatus.ENVIADO and lead.campanha_id in super_ids:
                 aberturas_hoje += 1
                 aberturas_hora += 1

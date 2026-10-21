@@ -90,7 +90,7 @@ FILTROS = {
     "conversa": [LeadStatus.RESPONDEU, LeadStatus.EM_CONVERSA],
     "humano": [LeadStatus.HUMANO_ASSUMIU],
     "reuniao": [LeadStatus.REUNIAO_AGENDADA],
-    "encerrados": [LeadStatus.SEM_INTERESSE, LeadStatus.OPT_OUT, LeadStatus.SEM_RESPOSTA],
+    "encerrados": [LeadStatus.SEM_INTERESSE, LeadStatus.OPT_OUT, LeadStatus.SEM_RESPOSTA, LeadStatus.JA_PROSPECTADO],
     "enviados": [LeadStatus.ENVIADO],
 }
 
