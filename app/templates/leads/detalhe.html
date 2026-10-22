@@ -4,16 +4,24 @@
 <p><a href="/leads">← Leads</a></p>
 <div class="titulo">
   <h1>{{ lead.nome or lead.telefone }}</h1>
-  <span class="status">{{ lead.status|replace("_", " ") }}</span>
+  {% set s = situacao(lead) %}
+  <span class="status situacao-{{ s.chave }}">{{ s.rotulo }}{% if lead.followups_enviados %} · {{ lead.followups_enviados }} follow-up(s){% endif %}</span>
   <div class="acoes">
     {% if lead.ia_ativa %}
     <form method="post" action="/leads/{{ lead.id }}/pausar-ia"><button class="perigo">Pausar IA neste lead</button></form>
-    {% elif lead.status not in ("opt_out",) %}
+    {% elif lead.status not in ("opt_out", "desqualificado") %}
     <form method="post" action="/leads/{{ lead.id }}/devolver-ia"><button>Devolver para a IA</button></form>
+    {% endif %}
+    {% if lead.status not in ("opt_out", "desqualificado") %}
+    <form method="post" action="/leads/{{ lead.id }}/desqualificar" class="acoes"
+          onsubmit="return confirm('Desqualificar? O lead sai da prospecção: a IA para e ele não recebe mais mensagens.')">
+      <input type="text" name="motivo" maxlength="200" placeholder="motivo (opcional)">
+      <button class="perigo">Desqualificar</button>
+    </form>
     {% endif %}
   </div>
 </div>
-{% if lead.handoff_motivo %}<div class="alerta">IA parada: {{ lead.handoff_motivo }}</div>{% endif %}
+{% if lead.handoff_motivo %}<div class="alerta">{{ "Desqualificado" if lead.status == "desqualificado" else "IA parada" }}: {{ lead.handoff_motivo }}</div>{% endif %}
 
 <dl class="card dados">
   <dt>WhatsApp</dt><dd>{{ lead.telefone }}</dd>
@@ -21,7 +29,7 @@
   <dt>Segmento</dt><dd>{{ lead.segmento or "ainda não classificado" }}</dd>
   <dt>Porte</dt><dd>{{ rotulo_porte.get(lead.porte, "ainda não classificado") }}</dd>
   <dt>Próxima etapa</dt><dd>{{ rotulo_etapa.get(lead.etapa, "Atenção (aguardando a primeira resposta)") }}</dd>
-  <dt>Google</dt><dd>{% if lead.nota %}{{ lead.nota }} ({{ lead.avaliacoes or 0 }} avaliações){% else %}—{% endif %}{% if lead.site %} · <a href="{{ lead.site }}" target="_blank" rel="noopener noreferrer">site</a>{% endif %}</dd>
+  <dt>Google</dt><dd>{% if lead.nota %}{{ lead.nota }} ({{ lead.avaliacoes or 0 }} avaliações){% else %}—{% endif %}{% if lead.site %} · <a href="{{ lead.site if lead.site.startswith("http") else "https://" ~ lead.site }}" target="_blank" rel="noopener noreferrer">site</a>{% endif %}</dd>
 </dl>
 
 <h2>Conversa</h2>

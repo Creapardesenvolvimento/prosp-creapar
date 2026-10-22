@@ -9,7 +9,9 @@
   <label>Arquivo
     <input type="file" name="arquivo" accept=".xlsx,.xls,.csv,.txt,.docx">
     <small>Excel (.xlsx, .xls), CSV, TXT ou Word (.docx), até 10 MB e {{ maximo }} telefones.
-      Com cabeçalho, o sistema acha sozinho as colunas de telefone, nome, cidade e segmento. Sem cabeçalho, procura
+      Com cabeçalho, o sistema acha sozinho as colunas de telefone, nome, cidade e segmento. Planilhas exportadas
+      de extratores do Google Maps (OrganizationName, OrganizationPhoneNr…) e do Apify entram com endereço, site,
+      e-mail, nota e link do Maps. Sem cabeçalho, procura
       o telefone em cada linha.</small>
   </label>
   <label>…ou cole os números
@@ -36,7 +38,7 @@
     <small>Depois de conferir o WhatsApp, os contatos novos entram na fila dela.</small>
   </label>
   <button type="submit">Importar</button>
-  <small class="muted">O sistema tira repetidos, quem está na blacklist e quem já é lead, e confere quem tem WhatsApp
+  <small class="muted">Tudo fica salvo em <a href="/empresas">Empresas</a>. O sistema tira repetidos, quem está na blacklist e quem já é lead, e confere quem tem WhatsApp
     (inclusive fixos, que podem ser WhatsApp Business). Contatos sem nome recebem "sua empresa" no lugar de {empresa}.</small>
 </form>
 

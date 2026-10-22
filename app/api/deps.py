@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import User
+from app.services.situacao import situacao
 
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["situacao"] = situacao  # rótulo da situação do lead/empresa em qualquer tela
 # Muda a cada deploy que altera o CSS, para o navegador não usar a versão antiga em cache.
 templates.env.globals["static_v"] = hashlib.md5(Path("app/static/app.css").read_bytes()).hexdigest()[:8]
 

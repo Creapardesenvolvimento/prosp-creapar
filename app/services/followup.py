@@ -151,15 +151,16 @@ def enviar_followup(
     return envio
 
 
-def encerrar_sem_resposta(db: Session, agora: datetime, dias: list[int]) -> int:
-    """Quem recebeu todos os follow-ups e seguiu calado vira "sem resposta"."""
-    leads = db.scalars(
-        select(Lead).where(
-            Lead.status == LeadStatus.ENVIADO,
-            Lead.followups_enviados >= len(dias),
-            Lead.ultimo_followup_em <= utc(agora - ESPERA_FINAL),
-        )
-    ).all()
+def encerrar_sem_resposta(db: Session, agora: datetime, dias: list[int], ativo: bool = True) -> int:
+    """Quem recebeu todos os follow-ups e seguiu calado vira "sem resposta" (na tela: "nem respondeu").
+
+    Com o follow-up desligado, basta a primeira mensagem ter alguns dias sem resposta.
+    """
+    if ativo:
+        filtro = (Lead.followups_enviados >= len(dias), Lead.ultimo_followup_em <= utc(agora - ESPERA_FINAL))
+    else:
+        filtro = (Lead.enviado_em <= utc(agora - ESPERA_FINAL),)
+    leads = db.scalars(select(Lead).where(Lead.status == LeadStatus.ENVIADO, *filtro)).all()
     for lead in leads:
         lead.status = LeadStatus.SEM_RESPOSTA
     if leads:

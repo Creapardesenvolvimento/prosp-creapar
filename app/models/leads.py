@@ -26,6 +26,7 @@ class LeadStatus(StrEnum):
     HUMANO_ASSUMIU = "humano_assumiu"
     OPT_OUT = "opt_out"
     SEM_RESPOSTA = "sem_resposta"
+    DESQUALIFICADO = "desqualificado"  # não serve para a oferta (não é empresa, número errado, fora do perfil)
     JA_PROSPECTADO = "ja_prospectado"  # tirado da fila: ele (ou o mesmo WhatsApp em outro cadastro) já foi abordado
 
 

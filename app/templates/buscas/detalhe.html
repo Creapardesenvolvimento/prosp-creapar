@@ -19,6 +19,18 @@
   {% endif %}
 </div>
 
+{% if situacao_na_base %}
+<div class="card" style="margin-top:16px">
+  <h2>Situação destas empresas na base</h2>
+  <ul class="chips">
+    {% for s in situacoes if situacao_na_base.get(s.chave) %}
+    <li><a href="/empresas?lista={{ busca.id }}&situacao={{ s.chave }}" class="situacao-{{ s.chave }}">{{ s.rotulo }} <strong>{{ situacao_na_base[s.chave] }}</strong></a></li>
+    {% endfor %}
+  </ul>
+  <p class="muted" style="margin:0"><a href="/empresas?lista={{ busca.id }}">Ver as empresas desta lista</a> — quem já foi contatado antes aparece com a situação atual (em follow-up, nem respondeu…).</p>
+</div>
+{% endif %}
+
 {% if busca.status == "concluida" and not tem_empresas and not busca.importada %}
 <div class="alerta" style="margin-top:16px">
   Esta busca foi feita antes de o sistema guardar todas as empresas. Enquanto o Apify ainda tiver o resultado

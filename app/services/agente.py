@@ -48,7 +48,9 @@ from app.services.telefone import para_evolution
 logger = logging.getLogger(__name__)
 
 # Com estes status a IA não fala mais com o lead.
-STATUS_SEM_IA = {LeadStatus.OPT_OUT, LeadStatus.HUMANO_ASSUMIU, LeadStatus.SEM_INTERESSE, LeadStatus.SEM_RESPOSTA}
+STATUS_SEM_IA = {
+    LeadStatus.OPT_OUT, LeadStatus.HUMANO_ASSUMIU, LeadStatus.SEM_INTERESSE, LeadStatus.SEM_RESPOSTA, LeadStatus.DESQUALIFICADO,
+}
 MAX_PASSOS = 6
 ROTULO_PORTE = {Porte.PEQUENO: "pequeno", Porte.MEDIO: "médio", Porte.GRANDE: "grande"}
 
@@ -254,11 +256,32 @@ FERRAMENTAS = [
         },
     },
     {
+        "name": "desqualificar_lead",
+        "description": (
+            "O contato não é um cliente possível: não é uma empresa ou estabelecimento, o número é de outra pessoa ou "
+            "empresa, a empresa fechou, ou está claramente fora do perfil da oferta. Encerra com educação."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"motivo": {"type": "string"}, "mensagem_de_despedida": {"type": "string"}},
+            "required": ["motivo"],
+        },
+    },
+    {
         "name": "registrar_opt_out",
         "description": "O lead pediu para não ser mais contatado. Não envie mais nada depois disso.",
         "input_schema": {"type": "object", "properties": {"motivo": {"type": "string"}}, "required": ["motivo"]},
     },
 ]
+
+
+def desqualificar(lead: Lead, motivo: str = "") -> None:
+    """Tira o lead da prospecção de vez: a IA para e ele nunca mais recebe primeira mensagem nem follow-up."""
+    lead.status = LeadStatus.DESQUALIFICADO
+    lead.ia_ativa = False
+    lead.responder_em = None
+    lead.handoff_motivo = motivo.strip()[:300] or None
+    logger.info("lead desqualificado", extra={"lead_id": lead.id})
 
 
 def _historico(db: Session, lead: Lead) -> tuple[str, list[dict]]:
@@ -357,9 +380,10 @@ Quando passar para humano (chame passar_para_humano):
 
 Encerrar:
 - "Não tenho interesse" claro e definitivo: chame marcar_sem_interesse (com uma despedida curta e educada).
+- Número errado, pessoa física, empresa fechada ou fora do perfil da oferta: chame desqualificar_lead.
 - Pedido para não ser mais contatado: chame registrar_opt_out.
 
-Termine SEMPRE chamando uma ferramenta: responder (para escrever ao lead), passar_para_humano, marcar_sem_interesse ou registrar_opt_out."""
+Termine SEMPRE chamando uma ferramenta: responder (para escrever ao lead), passar_para_humano, marcar_sem_interesse, desqualificar_lead ou registrar_opt_out."""
     )
     return "\n".join(partes)
 
@@ -455,7 +479,7 @@ def conversar(db: Session, lead: Lead) -> str:
             _depois_de_responder(lead)
             return "respondeu"
 
-        terminais = {"responder", "passar_para_humano", "marcar_sem_interesse", "registrar_opt_out"}
+        terminais = {"responder", "passar_para_humano", "marcar_sem_interesse", "desqualificar_lead", "registrar_opt_out"}
         final = next((u for u in usos if u.name in terminais), None)
         if final is not None:
             return _finalizar(db, lead, final.name, final.input or {})
@@ -514,6 +538,11 @@ def _finalizar(db: Session, lead: Lead, nome: str, entrada: dict) -> str:
         lead.handoff_motivo = (entrada.get("motivo") or "")[:300] or None
         logger.info("lead sem interesse", extra={"lead_id": lead.id})
         return "sem_interesse"
+    if nome == "desqualificar_lead":
+        if (entrada.get("mensagem_de_despedida") or "").strip():
+            enviar_ao_lead(db, lead, entrada["mensagem_de_despedida"].strip())
+        desqualificar(lead, f"pela IA: {entrada.get('motivo') or ''}")
+        return "desqualificado"
     # registrar_opt_out
     lead.status = LeadStatus.OPT_OUT
     lead.ia_ativa = False

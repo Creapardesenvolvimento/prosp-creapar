@@ -13,7 +13,7 @@ import logging
 import re
 import unicodedata
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
@@ -39,6 +39,30 @@ COLUNAS = {
 }
 
 
+# Cabeçalhos exatos de exportações conhecidas (sem acento, só letras e números): extratores do Google Maps
+# (OrganizationName, OrganizationPhoneNr…) e a planilha do Apify (title, phone, city…).
+CABECALHOS_CONHECIDOS = {
+    "organizationphonenr": "telefone", "phoneunformatted": "telefone",
+    "organizationphonefromthewebsite": "telefone_alt",
+    "organizationname": "nome", "title": "nome",
+    "organizationcategory": "categoria", "categoryname": "categoria",
+    "organizationaddress": "endereco", "address": "endereco", "endereco": "endereco",
+    "state": "estado", "estado": "estado", "uf": "estado",
+    "organizationwebsite": "site", "website": "site", "site": "site",
+    "organizationemail": "email", "email": "email", "emails": "email",
+    "ratestars": "nota", "totalscore": "nota", "nota": "nota",
+    "reviewstotalcount": "avaliacoes", "reviewscount": "avaliacoes", "avaliacoes": "avaliacoes",
+    "gmapslink": "url_maps", "url": "url_maps",
+    "organizationgmapsid": "place_id", "placeid": "place_id",
+    "searchrequest": "busca",
+    "organizationinstagram": "instagram", "instagram": "instagram",
+    "organizationfacebook": "facebook", "facebook": "facebook",
+    "neighborhood": "bairro", "bairro": "bairro",
+}
+# "Endereço: R. X, 10 - Centro, Angra dos Reis - RJ, 23900-000" -> cidade e UF
+_CIDADE_UF = re.compile(r"(?:^|,)\s*([^,]+?)\s+-\s+([A-Z]{2})(?:,\s*\d{5}-?\d{3})?\s*$")
+
+
 class ImportacaoError(Exception):
     pass
 
@@ -50,6 +74,16 @@ class Contato:
     nome: str = ""
     cidade: str = ""
     categoria: str = ""
+    estado: str = ""
+    bairro: str = ""
+    endereco: str = ""
+    site: str = ""
+    email: str = ""
+    nota: float | None = None
+    avaliacoes: int | None = None
+    url_maps: str = ""
+    place_id: str = ""
+    extras: dict = field(default_factory=dict)  # instagram, facebook, busca de origem
 
 
 def _sem_acento(texto: str) -> str:
@@ -86,31 +120,26 @@ def _ler_csv(conteudo: bytes) -> list[list[str]]:
     return [[_celula(c) for c in linha] for linha in csv.reader(io.StringIO(texto), dialeto)]
 
 
-def _ler_xlsx(conteudo: bytes) -> list[list[str]]:
+def _ler_xlsx(conteudo: bytes) -> list[list[list[str]]]:
     import openpyxl
 
     try:
         livro = openpyxl.load_workbook(io.BytesIO(conteudo), read_only=True, data_only=True)
     except (zipfile.BadZipFile, KeyError, ValueError, OSError) as exc:
         raise ImportacaoError("Não consegui abrir a planilha .xlsx. Confira se o arquivo não está corrompido.") from exc
-    linhas = []
-    for aba in livro.worksheets:
-        linhas.extend([_celula(c) for c in linha] for linha in aba.iter_rows(values_only=True))
+    abas = [[[_celula(c) for c in linha] for linha in aba.iter_rows(values_only=True)] for aba in livro.worksheets]
     livro.close()
-    return linhas
+    return abas
 
 
-def _ler_xls(conteudo: bytes) -> list[list[str]]:
+def _ler_xls(conteudo: bytes) -> list[list[list[str]]]:
     import xlrd
 
     try:
         livro = xlrd.open_workbook(file_contents=conteudo)
     except xlrd.XLRDError as exc:
         raise ImportacaoError("Não consegui abrir a planilha .xls. Tente salvar como .xlsx ou .csv.") from exc
-    linhas = []
-    for aba in livro.sheets():
-        linhas.extend([_celula(c) for c in aba.row_values(i)] for i in range(aba.nrows))
-    return linhas
+    return [[[_celula(c) for c in aba.row_values(i)] for i in range(aba.nrows)] for aba in livro.sheets()]
 
 
 def _ler_docx(conteudo: bytes) -> list[list[str]]:
@@ -126,7 +155,8 @@ def _ler_docx(conteudo: bytes) -> list[list[str]]:
     return linhas
 
 
-def ler_arquivo(nome: str, conteudo: bytes) -> list[list[str]]:
+def ler_abas(nome: str, conteudo: bytes) -> list[list[list[str]]]:
+    """Cada aba da planilha separada: cada uma tem o próprio cabeçalho (ex.: "Organizations" e "Reviews")."""
     nome = (nome or "").lower()
     if len(conteudo) > TAMANHO_MAXIMO:
         raise ImportacaoError("O arquivo passou de 10 MB. Divida a lista em partes menores.")
@@ -137,10 +167,20 @@ def ler_arquivo(nome: str, conteudo: bytes) -> list[list[str]]:
     if nome.endswith(".xls"):
         return _ler_xls(conteudo)
     if nome.endswith(".docx"):
-        return _ler_docx(conteudo)
+        return [_ler_docx(conteudo)]
     if nome.endswith((".csv", ".txt")):
-        return _ler_csv(conteudo)
+        return [_ler_csv(conteudo)]
     raise ImportacaoError("Formato não aceito. Use Excel (.xlsx ou .xls), CSV, TXT ou Word (.docx).")
+
+
+def ler_arquivo(nome: str, conteudo: bytes) -> list[list[str]]:
+    """As linhas da primeira aba (para arquivos de uma aba só)."""
+    abas = ler_abas(nome, conteudo)
+    return abas[0] if abas else []
+
+
+def contatos_do_arquivo(nome: str, conteudo: bytes) -> list["Contato"]:
+    return [contato for aba in ler_abas(nome, conteudo) for contato in extrair_contatos(aba)]
 
 
 def ler_texto(texto: str) -> list[list[str]]:
@@ -162,6 +202,10 @@ def _mapear_cabecalho(linha: list[str]) -> dict[str, int] | None:
     for indice, celula in enumerate(linha):
         texto = _sem_acento(celula)
         if not texto:
+            continue
+        conhecido = CABECALHOS_CONHECIDOS.get(re.sub(r"[^a-z0-9]", "", texto))
+        if conhecido:
+            mapa.setdefault(conhecido, indice)
             continue
         # Vale a primeira palavra conhecida: "Nome do contato" é nome, "Telefone da empresa" é telefone.
         for palavra in re.split(r"[^a-z0-9]+", texto):
@@ -188,6 +232,54 @@ def _nome_da_linha(celulas: list[str], telefones: list[str]) -> str:
     return ""
 
 
+def _numero(texto: str, inteiro: bool = False):
+    texto = (texto or "").strip().replace(",", ".")
+    try:
+        return int(float(texto)) if inteiro else float(texto)
+    except ValueError:
+        return None
+
+
+def _primeiro_email(texto: str) -> str:
+    """A coluna de e-mail dos extratores traz vários, inclusive de serviços do site (sentry, wix)."""
+    for parte in re.split(r"[,;\s]+", texto or ""):
+        if "@" in parte and not any(lixo in parte for lixo in ("sentry", "wixpress", "example.")):
+            return parte[:255]
+    return ""
+
+
+def cidade_do_endereco(endereco: str) -> tuple[str, str, str]:
+    """(endereço limpo, cidade, UF) a partir de "Endereço: ..., Cidade - UF, CEP"."""
+    limpo = re.sub(r"^\s*endere\S*\s*:\s*", "", endereco or "", flags=re.IGNORECASE).strip()
+    achado = _CIDADE_UF.search(limpo)
+    return limpo[:500], (achado.group(1).strip()[:200] if achado else ""), (achado.group(2) if achado else "")
+
+
+def _contato_da_linha(numero_linha: int, telefone: str, pegar) -> Contato:
+    endereco, cidade_end, uf_end = cidade_do_endereco(pegar("endereco"))
+    busca = pegar("busca").replace("+", " ").strip()
+    extras = {k: v for k in ("instagram", "facebook") if (v := pegar(k).split(",")[0].strip())}
+    if busca:
+        extras["busca"] = busca
+    return Contato(
+        linha=numero_linha,
+        telefone_original=telefone[:50],
+        nome=pegar("nome")[:300],
+        cidade=(pegar("cidade") or cidade_end)[:200],
+        categoria=pegar("categoria")[:200],
+        estado=(pegar("estado") or uf_end)[:100],
+        bairro=pegar("bairro")[:200],
+        endereco=endereco,
+        site=pegar("site")[:500],
+        email=_primeiro_email(pegar("email")),
+        nota=_numero(pegar("nota")),
+        avaliacoes=_numero(pegar("avaliacoes"), inteiro=True),
+        url_maps=pegar("url_maps")[:1000],
+        place_id=pegar("place_id")[:200],
+        extras=extras,
+    )
+
+
 def extrair_contatos(linhas: list[list[str]]) -> list[Contato]:
     """Acha os telefones nas linhas. Com cabeçalho, usa as colunas; sem, procura em cada célula."""
     linhas = [[_celula(c) for c in linha] for linha in linhas]
@@ -206,16 +298,14 @@ def extrair_contatos(linhas: list[list[str]]) -> list[Contato]:
             continue
         if mapa:
             pegar = lambda campo: linha[mapa[campo]] if campo in mapa and mapa[campo] < len(linha) else ""  # noqa: E731
-            celula_telefone = pegar("telefone")
-            telefones = telefones_no_texto(celula_telefone) or ([celula_telefone] if celula_telefone else [])
-            nome = pegar("nome")[:300]
-            cidade, categoria = pegar("cidade")[:200], pegar("categoria")[:200]
+            celula_telefone = pegar("telefone") or pegar("telefone_alt")  # sem o do Maps, o achado no site
+            # Sem formato de telefone, só conta como "telefone inválido" se tiver algum número.
+            telefones = telefones_no_texto(celula_telefone) or ([celula_telefone] if any(c.isdigit() for c in celula_telefone) else [])
+            contatos.extend(_contato_da_linha(numero_linha, telefone, pegar) for telefone in telefones)
         else:
             telefones = [t for celula in linha for t in telefones_no_texto(celula)]
             nome = _nome_da_linha(linha, telefones)
-            cidade = categoria = ""
-        for telefone in telefones:
-            contatos.append(Contato(numero_linha, telefone[:50], nome, cidade, categoria))
+            contatos.extend(Contato(numero_linha, telefone[:50], nome) for telefone in telefones)
     return contatos
 
 
@@ -255,7 +345,12 @@ def importar(
     )
     db.add(busca)
     db.flush()
+    vistos: set[str] = set()
     for contato in contatos:
+        if contato.place_id:
+            if contato.place_id in vistos:
+                continue  # a mesma empresa repetida na planilha
+            vistos.add(contato.place_id)
         telefone = normalizar_telefone(contato.telefone_original)
         db.add(
             Empresa(
@@ -264,9 +359,18 @@ def importar(
                 telefone_original=contato.telefone_original,
                 telefone=telefone,
                 celular=eh_celular(telefone),
-                categoria=(contato.categoria or segmento.strip())[:200] or None,
+                # Sem categoria nem segmento, a busca que gerou a planilha ("angra dos reis-rj pousada") ajuda a achar o roteiro.
+                categoria=(contato.categoria or segmento.strip() or contato.extras.get("busca", ""))[:200] or None,
                 cidade=(contato.cidade or cidade.strip())[:200] or None,
-                dados={"origem": "importacao", "linha": contato.linha},
+                estado=contato.estado or None,
+                bairro=contato.bairro or None,
+                endereco=contato.endereco or None,
+                site=contato.site or None,
+                nota=contato.nota,
+                avaliacoes=contato.avaliacoes,
+                url_maps=contato.url_maps or None,
+                place_id=contato.place_id or None,
+                dados={"origem": "importacao", "linha": contato.linha, **({"email": contato.email} if contato.email else {}), **contato.extras},
             )
         )
     db.flush()

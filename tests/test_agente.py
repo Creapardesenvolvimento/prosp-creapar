@@ -360,3 +360,13 @@ def test_atencao_nao_cumprimenta_de_novo(db, lead, fake_ia, evo):
     agente.conversar(db, lead)
     assert "NÃO comece com" in fake_ia.chamadas[0]["system"]
     assert evo.called("send_text")[-1][3] == "Que bom falar com você. Sou a Bruna, da Brafort10."
+
+
+def test_desqualificar_pela_ia(db, lead, fake_ia, evo):
+    lead.segmento, lead.porte = "Pousadas", "pequeno"
+    fake_ia.fila.append(resposta(ferramenta("desqualificar_lead", {"motivo": "é o celular de uma pessoa física", "mensagem_de_despedida": "Desculpe o engano!"})))
+    assert agente.conversar(db, lead) == "desqualificado"
+    assert (lead.status, lead.ia_ativa) == (LeadStatus.DESQUALIFICADO, False)
+    assert "pessoa física" in lead.handoff_motivo
+    assert evo.called("send_text")[-1][3] == "Desculpe o engano!"
+    assert not agente.pode_responder(lead)

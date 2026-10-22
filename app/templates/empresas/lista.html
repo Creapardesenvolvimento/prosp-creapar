@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Empresas{% endblock %}
+{% block content %}
+<div class="titulo">
+  <h1>Empresas</h1>
+  <a class="botao" href="/importar">Importar lista</a>
+  <a class="botao secundario" href="/empresas.csv?{{ query() }}">Baixar planilha</a>
+</div>
+<p class="muted" style="margin-top:-8px">Todas as empresas que entraram por lista ou busca, uma vez cada, com a situação na prospecção.
+  O sistema reconhece quem já foi contatado, inclusive pelo mesmo WhatsApp com outro telefone, e não manda primeira mensagem de novo.</p>
+{% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+{% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
+
+<form method="get" action="/empresas" class="card filtros">
+  <label>Buscar <input type="search" name="q" value="{{ f.texto }}" placeholder="nome, telefone, cidade ou categoria"></label>
+  <label>Lista
+    <select name="lista">
+      <option value="">Todas (sem repetir)</option>
+      {% for b in listas %}<option value="{{ b.id }}" {% if f.lista == b.id %}selected{% endif %}>{{ b.rotulo }}{% if b.created_at %} · {{ b.created_at.strftime("%d/%m") }}{% endif %}</option>{% endfor %}
+    </select>
+  </label>
+  <input type="hidden" name="situacao" value="{{ f.situacao }}">
+  <button type="submit">Filtrar</button>
+</form>
+
+<ul class="chips">
+  <li><a href="/empresas?{{ query(situacao='') }}" class="{{ '' if f.situacao else 'ativo' }}">Todas <strong>{{ total_geral }}</strong></a></li>
+  {% for s in situacoes if contagens.get(s.chave) %}
+  <li><a href="/empresas?{{ query(situacao=s.chave) }}" class="situacao-{{ s.chave }} {{ 'ativo' if f.situacao == s.chave }}">{{ s.rotulo }} <strong>{{ contagens[s.chave] }}</strong></a></li>
+  {% endfor %}
+</ul>
+
+{% if contagens.get("nao_contatado") and campanhas %}
+<form method="post" action="/empresas/para-campanha" class="card acoes" style="align-items:center">
+  <input type="hidden" name="q" value="{{ f.texto }}">
+  <input type="hidden" name="lista" value="{{ f.lista or '' }}">
+  <span>Prospectar as <strong>{{ contagens["nao_contatado"] }}</strong> não contatadas {{ "desta lista" if f.lista else "deste filtro" if f.texto else "" }}:</span>
+  <select name="campanha_id" required>
+    <option value="">— campanha —</option>
+    {% for c in campanhas %}<option value="{{ c.id }}">{{ c.nome }} ({{ c.status }}{{ ", super" if c.super }})</option>{% endfor %}
+  </select>
+  <button type="submit">Colocar na fila</button>
+</form>
+{% endif %}
+
+{% if linhas %}
+<div class="tabela-wrap" style="margin-top:16px">
+<table>
+  <thead><tr><th>Empresa</th><th>Telefone</th><th>Contatado</th><th>Situação</th><th>Campanha</th><th>Cidade</th><th></th></tr></thead>
+  <tbody>
+    {% for e, l, s in linhas %}
+    <tr>
+      <td>{% if l %}<a href="/leads/{{ l.id }}">{{ e.nome or "—" }}</a>{% else %}{{ e.nome or "—" }}{% endif %}
+        {% if e.categoria %}<br><small>{{ e.categoria }}</small>{% endif %}</td>
+      <td>{{ e.telefone or e.telefone_original or "—" }}</td>
+      <td>{% if s.contatado %}<span class="ok">✔ sim</span>{% else %}<span class="muted">não</span>{% endif %}</td>
+      <td><span class="status situacao-{{ s.chave }}">{{ s.rotulo }}</span>
+        {% if l and l.followups_enviados %}<br><small>{{ l.followups_enviados }} follow-up(s)</small>{% endif %}
+        {% if not l and e.descarte %}<br><small>{{ e.descarte|replace("_", " ") }}</small>{% endif %}
+        {% if l and l.status == "desqualificado" and l.handoff_motivo %}<br><small>{{ l.handoff_motivo }}</small>{% endif %}</td>
+      <td>{{ campanha_de[l.campanha_id].nome if l and l.campanha_id in campanha_de else "—" }}</td>
+      <td>{{ e.cidade or "—" }}{% if e.estado %} - {{ e.estado }}{% endif %}</td>
+      <td>{% if l and l.status not in ("desqualificado", "opt_out") %}
+        <form method="post" action="/leads/{{ l.id }}/desqualificar" onsubmit="return confirm('Desqualificar? A empresa sai da prospecção e não recebe mais mensagens.')">
+          <input type="hidden" name="voltar" value="/empresas?{{ query(pagina=pagina) }}">
+          <button class="link perigo-link">desqualificar</button>
+        </form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if paginas > 1 %}
+<p class="acoes">
+  {% if pagina > 1 %}<a href="/empresas?{{ query(pagina=pagina - 1) }}">← anterior</a>{% endif %}
+  <span class="muted">página {{ pagina }} de {{ paginas }} · {{ total }} empresas</span>
+  {% if pagina < paginas %}<a href="/empresas?{{ query(pagina=pagina + 1) }}">próxima →</a>{% endif %}
+</p>
+{% endif %}
+{% else %}
+<p class="muted" style="margin-top:16px">Nenhuma empresa {{ "com esse filtro" if f.situacao or f.texto or f.lista else "ainda" }}. <a href="/importar">Importar uma lista</a></p>
+{% endif %}
+{% endblock %}

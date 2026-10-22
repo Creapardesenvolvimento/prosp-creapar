@@ -179,3 +179,16 @@ textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--border); bo
 .proxy-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 .status.modo-super { background: #f3e8ff; color: #6b21a8; }
 .modo-campanha label.check { align-items: flex-start; }
+
+/* Empresas: filtros e chips de situação */
+.filtros { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: end; margin-bottom: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 12px 0; }
+.chips a { display: inline-block; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px; }
+.chips a.ativo { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.situacao-nao_contatado, .situacao-na_fila { background: #e3edff; color: #1b4fb3; }
+.situacao-aguardando, .situacao-followup { background: #fff1cc; color: #7a5a00; }
+.situacao-nem_respondeu { background: #ffe8d6; color: #9a4a00; }
+.situacao-conversa, .situacao-humano { background: #f3e8ff; color: #6b21a8; }
+.situacao-reuniao { background: #dcf5e3; color: #17663a; }
+.situacao-sem_interesse, .situacao-desqualificado, .situacao-opt_out, .situacao-ja_prospectado { background: #fde2df; color: #9c2b1f; }
+.situacao-sem_whatsapp, .situacao-processando { background: #e8eaee; color: #3d4656; }

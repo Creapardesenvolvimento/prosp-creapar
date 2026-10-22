@@ -284,6 +284,7 @@ def processar(db: Session, busca: Busca, pausa_entre_lotes: float = 1.0) -> None
             nota=empresa.nota,
             avaliacoes=empresa.avaliacoes,
             place_id=empresa.place_id,
+            email=(empresa.dados or {}).get("email"),
             status=LeadStatus.NOVO,
         )
         try:

@@ -13,7 +13,9 @@ from app.config import get_settings
 from app.db import get_db
 from app.models import Busca, BuscaStatus, Campanha, CampanhaStatus, Empresa, Lead, User
 from app.services import buscas as svc
-from app.services import importacao
+from app.services import base_empresas, importacao
+from app.services.base_empresas import Filtros
+from app.services.situacao import SITUACOES
 from app.services.buscas import MOTIVOS_DESCARTE, BuscaError
 from app.services.importacao import ImportacaoError
 from app.tasks.buscas import iniciar_busca, processar_busca
@@ -115,7 +117,7 @@ async def importar(
         nome_arquivo = arquivo.filename if arquivo and arquivo.filename else ""
         if nome_arquivo:
             conteudo = await arquivo.read(importacao.TAMANHO_MAXIMO + 1)
-            contatos += importacao.extrair_contatos(importacao.ler_arquivo(nome_arquivo, conteudo))
+            contatos += importacao.contatos_do_arquivo(nome_arquivo, conteudo)
         if texto.strip():
             contatos += importacao.extrair_contatos(importacao.ler_texto(texto))
         if not nome_arquivo and not texto.strip():
@@ -156,6 +158,8 @@ def _contexto_detalhe(db: Session, busca: Busca) -> dict:
         "em_andamento": busca.status in EM_ANDAMENTO,
         "custo_maximo": svc.custo_maximo(busca.limite),
         "campanha_destino": db.get(Campanha, busca.campanha_id) if busca.campanha_id else None,
+        "situacao_na_base": base_empresas.contagens(db, Filtros(lista=busca.id)) if busca.status == BuscaStatus.CONCLUIDA else {},
+        "situacoes": SITUACOES,
     }
 
 

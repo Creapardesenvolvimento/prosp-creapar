@@ -302,7 +302,7 @@ def ciclo(db: Session, agora: datetime | None = None, rng: random.Random | None 
     if numeros_svc.garantir_virada(db, agora):
         db.commit()
     followup_ativo, dias_followup = followup.regras(db)
-    if followup_ativo and followup.encerrar_sem_resposta(db, agora, dias_followup):
+    if followup.encerrar_sem_resposta(db, agora, dias_followup, followup_ativo):
         db.commit()
     regras = config_sistema.regras_disparo(db)
     if not dentro_do_horario(regras, agora):

@@ -146,12 +146,26 @@ def definir_numeros(db: Session, campanha: Campanha, numero_ids: list[int]) -> N
 
 def adicionar_leads(db: Session, campanha: Campanha, busca_ids: list[int]) -> int:
     """Põe na fila da campanha os leads novos (ainda sem campanha) das buscas escolhidas."""
-    if campanha.status == CampanhaStatus.ENCERRADA:
-        raise CampanhaError("A campanha está encerrada.")
     if not busca_ids:
         raise CampanhaError("Escolha pelo menos uma busca.")
+    return _por_na_fila(db, campanha, Lead.busca_id.in_(busca_ids))
+
+
+def adicionar_leads_por_id(db: Session, campanha: Campanha, lead_ids: list[int]) -> int:
+    """Põe na fila da campanha os leads escolhidos (só os novos, sem campanha e nunca prospectados)."""
+    if not lead_ids:
+        raise CampanhaError("Nenhum lead não contatado para colocar na campanha.")
+    total = 0
+    for i in range(0, len(lead_ids), 1000):
+        total += _por_na_fila(db, campanha, Lead.id.in_(lead_ids[i : i + 1000]))
+    return total
+
+
+def _por_na_fila(db: Session, campanha: Campanha, *filtro) -> int:
+    if campanha.status == CampanhaStatus.ENCERRADA:
+        raise CampanhaError("A campanha está encerrada.")
     bloqueados = select(Blacklist.telefone)
-    livres = (Lead.busca_id.in_(busca_ids), Lead.status == LeadStatus.NOVO, Lead.campanha_id.is_(None))
+    livres = (*filtro, Lead.status == LeadStatus.NOVO, Lead.campanha_id.is_(None))
     # Quem já foi abordado (ou tem o mesmo WhatsApp de quem foi) sai da lista de disponíveis de vez.
     ja = db.execute(
         update(Lead)
@@ -213,7 +227,7 @@ FASES_PROGRESSO = [
     ("conversa", "Em conversa", [LeadStatus.RESPONDEU, LeadStatus.EM_CONVERSA]),
     ("humano", "Com humano", [LeadStatus.HUMANO_ASSUMIU]),
     ("aguardando", "Aguardando resposta", [LeadStatus.ENVIADO]),
-    ("encerrado", "Encerrados", [LeadStatus.SEM_INTERESSE, LeadStatus.OPT_OUT, LeadStatus.SEM_RESPOSTA, LeadStatus.JA_PROSPECTADO]),
+    ("encerrado", "Encerrados", [LeadStatus.SEM_INTERESSE, LeadStatus.OPT_OUT, LeadStatus.SEM_RESPOSTA, LeadStatus.DESQUALIFICADO, LeadStatus.JA_PROSPECTADO]),
     ("fila", "Na fila", [LeadStatus.NA_FILA]),
 ]
 

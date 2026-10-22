@@ -51,7 +51,7 @@
       <td>{{ l.segmento or "—" }}</td>
       <td>{{ l.porte or "—" }}</td>
       <td>{{ l.etapa or "—" }}</td>
-      <td>{{ l.status|replace("_", " ") }}{% if not l.ia_ativa %}<br><small class="muted">IA desligada</small>{% endif %}</td>
+      <td>{{ situacao(l).rotulo }}{% if l.followups_enviados and l.status == "enviado" %} ({{ l.followups_enviados }}){% endif %}{% if not l.ia_ativa %}<br><small class="muted">IA desligada</small>{% endif %}</td>
     </tr>
     {% endfor %}
   </tbody>
