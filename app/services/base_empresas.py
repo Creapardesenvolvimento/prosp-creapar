@@ -61,14 +61,16 @@ def todas(db: Session, filtros: Filtros) -> list[tuple]:
 
 def contagens(db: Session, filtros: Filtros) -> dict[str, int]:
     """Situação -> quantidade, com os mesmos filtros de texto e lista (sem o de situação)."""
+    # Agrupa pelas colunas puras: expressão com parâmetro (ex.: "followups > 0") no GROUP BY o Postgres recusa,
+    # porque o SELECT e o GROUP BY recebem parâmetros diferentes.
     sub = _base(filtros, com_situacao=False).subquery()
     linhas = db.execute(
-        select(sub.c.status, sub.c.followups_enviados > 0, sub.c.descarte.is_not(None), func.count())
-        .group_by(sub.c.status, sub.c.followups_enviados > 0, sub.c.descarte.is_not(None))
+        select(sub.c.status, sub.c.followups_enviados, sub.c.descarte, func.count())
+        .group_by(sub.c.status, sub.c.followups_enviados, sub.c.descarte)
     ).all()
     resultado: dict[str, int] = {}
-    for status, tem_followup, descartada, quantidade in linhas:
-        chave = situacao_svc.chave_da_situacao(status, 1 if tem_followup else 0, bool(descartada))
+    for status, followups, descarte, quantidade in linhas:
+        chave = situacao_svc.chave_da_situacao(status, followups or 0, descarte is not None)
         resultado[chave] = resultado.get(chave, 0) + quantidade
     return resultado
 

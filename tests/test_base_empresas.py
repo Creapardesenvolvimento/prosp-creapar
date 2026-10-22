@@ -166,3 +166,15 @@ def test_sem_followup_quem_nao_responde_vira_nem_respondeu(db, server, evo):
 def test_tela_de_empresas_vazia_e_menu(logged_client):
     pagina = logged_client.get("/empresas").text
     assert "Nenhuma empresa ainda" in pagina and 'href="/empresas"' in pagina
+
+
+def test_contagem_compativel_com_postgres(db, monkeypatch):
+    """No Postgres, expressão com parâmetro no GROUP BY quebra a página (SELECT e GROUP BY recebem parâmetros diferentes)."""
+    from sqlalchemy.dialects import postgresql
+
+    capturadas = []
+    executar = db.execute
+    monkeypatch.setattr(db, "execute", lambda consulta, *a, **k: capturadas.append(consulta) or executar(consulta, *a, **k))
+    base_empresas.contagens(db, Filtros(texto="pousada"))
+    sql = str(capturadas[-1].compile(dialect=postgresql.dialect()))
+    assert "GROUP BY" in sql and "%(" not in sql.split("GROUP BY")[-1]
