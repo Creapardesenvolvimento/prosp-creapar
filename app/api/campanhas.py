@@ -57,8 +57,8 @@ def lista(request: Request, db: Session = Depends(get_db), user: User = Depends(
 
 
 @router.get("/campanhas/nova")
-def nova(request: Request, user: User = Depends(current_user)):
-    return templates.TemplateResponse(request, "campanhas/nova.html", {"user": user, "erro": None, "v": {}})
+def nova(request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return templates.TemplateResponse(request, "campanhas/nova.html", {"user": user, "erro": None, "v": svc.textos_padrao(db)})
 
 
 @router.post("/campanhas")
@@ -113,6 +113,7 @@ def detalhe(campanha_id: int, request: Request, erro: str | None = None, ok: str
         {
             "user": user,
             "c": campanha,
+            "padrao": svc.textos_padrao(db),  # campanha antiga sem oferta/instruções: o formulário já sugere o padrão
             "m": svc.metricas(db, campanha),
             "p": svc.progresso(db, campanha),
             "atualizar": True,

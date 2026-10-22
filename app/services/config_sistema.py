@@ -29,7 +29,7 @@ class Campo:
     chave: str
     grupo: str
     rotulo: str
-    tipo: str  # dias | hora | inteiro | decimal | rampa | texto (sem espaços) | frase | simnao | telefone (opcional) | lista_dias
+    tipo: str  # dias | hora | inteiro | decimal | rampa | texto (sem espaços) | frase | longo | simnao | telefone (opcional) | lista_dias
     ajuda: str = ""
     minimo: float | None = None
     maximo: float | None = None
@@ -40,6 +40,10 @@ CAMPOS = [
     Campo("atendente_nome", "Empresa", "Nome que a IA usa", "frase", "Entra no lugar de [Seu Nome] nos roteiros."),
     Campo("economia_texto", "Empresa", "Economia que pode ser citada", "frase",
           "Entra no lugar de \"até X%\" nos roteiros. Use só o que a empresa consegue sustentar."),
+    Campo("campanha_oferta", "Campanha nova", "Oferta / promessa", "longo",
+          "Já vem preenchida em cada campanha nova (dá para mudar nela). {marca}, {economia} e {atendente} viram os valores acima."),
+    Campo("campanha_instrucoes", "Campanha nova", "Instruções para a IA", "longo",
+          "Já vêm preenchidas em cada campanha nova. A Bruna segue isto em todas as conversas da campanha."),
     Campo("disparo_dias", "Disparo", "Dias de disparo", "dias"),
     Campo("disparo_inicio", "Disparo", "Início do horário comercial", "hora"),
     Campo("disparo_fim", "Disparo", "Fim do horário comercial", "hora"),
@@ -148,6 +152,8 @@ def padroes() -> dict:
         "empresa_nome": "Brafort10",
         "atendente_nome": "Bruna",
         "economia_texto": "até 50%",
+        "campanha_oferta": 'Produtos de limpeza profissional super concentrados da {marca}: rendem mais e reduzem o gasto com produtos em {economia}, sem perder qualidade nem segurança. Junto vêm o atendimento do "Dr. Limpeza" (consultoria e suporte pelo WhatsApp) e o treinamento da equipe de limpeza certificado pela ANVISA. Convite: uma análise gratuita do potencial de economia da empresa.',
+        "campanha_instrucoes": 'Você é {atendente}, da {marca}, empresa de produtos de limpeza profissional.\n- Empresas pequenas: foque no produto concentrado e na economia ({economia} no gasto com produtos).\n- Empresas médias: foque no atendimento. O "Dr. Limpeza" dá consultoria e suporte direto pelo WhatsApp.\n- Empresas grandes: foque no treinamento da equipe, certificado pela ANVISA, e na padronização da limpeza.\n- O objetivo é agendar a análise gratuita: uma conversa rápida com o time, sem compromisso.\n- Não passe preço nem tabela por mensagem: explique que a análise mostra quanto dá para economizar e ofereça os horários.\n- "Já tenho fornecedor": a análise compara com o que a empresa usa hoje e não obriga a trocar.\n- "Não tenho tempo": a conversa é curta, e você ajusta ao melhor horário dela.\n- "Manda por e-mail": a análise depende de entender a rotina de limpeza, por isso a conversa.\n- Não prometa economia maior que {economia} nem resultados que a {marca} não garante.',
         "followup_ativo": True,
         "followup_dias": "2,5,10",
         "notificar_telefone": "",
@@ -193,6 +199,11 @@ def _converter(campo: Campo, bruto) -> object:
         if telefone is None:
             raise ConfigError(f"{campo.rotulo}: telefone inválido. Use DDD + número, ex.: (11) 99999-8888.")
         return telefone
+    if campo.tipo == "longo":
+        texto = str(bruto).replace("\r\n", "\n").strip()
+        if len(texto) > 4000:
+            raise ConfigError(f"{campo.rotulo}: use até 4000 caracteres.")
+        return texto
     if campo.tipo == "frase":
         if not texto or len(texto) > 200:
             raise ConfigError(f"{campo.rotulo}: informe um texto de até 200 caracteres.")

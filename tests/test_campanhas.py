@@ -227,3 +227,19 @@ def test_progresso_nas_telas(logged_client, db, campanha, conectado):
         s.commit()
     pagina = logged_client.get(f"/campanhas/{campanha.id}/progresso")
     assert "Fila concluída" in pagina.text and "Adicionar mais leads" in pagina.text
+
+
+def test_campanha_nova_vem_com_oferta_e_instrucoes_da_brafort(logged_client, db):
+    from app.services import config_sistema
+
+    pagina = logged_client.get("/campanhas/nova").text
+    assert "Brafort10" in pagina and "até 50%" in pagina and "Dr. Limpeza" in pagina and "ANVISA" in pagina
+    assert "{marca}" not in pagina and "{economia}" not in pagina
+
+    config_sistema.salvar(db, {"campanha_oferta": "Oferta da {marca} com {economia}", "economia_texto": "até 30%"})
+    db.commit()
+    assert "Oferta da Brafort10 com até 30%" in logged_client.get("/campanhas/nova").text
+    assert "Instruções para a IA" in logged_client.get("/config").text
+
+    resp = logged_client.post("/campanhas", data={"nome": "Antiga", "oferta": "", "prompt_agente": ""})
+    assert "Oferta da Brafort10 com até 30%" in logged_client.get(resp.headers["location"]).text  # sugere o padrão

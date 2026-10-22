@@ -60,6 +60,16 @@ def salvar(
     return campanha
 
 
+def textos_padrao(db: Session) -> dict:
+    """Oferta e instruções que já vêm preenchidas numa campanha nova (Configurações → Campanha nova)."""
+    v = config_sistema.valores(db)
+
+    def preencher(texto: str) -> str:
+        return texto.replace("{marca}", v["empresa_nome"]).replace("{economia}", v["economia_texto"]).replace("{atendente}", v["atendente_nome"])
+
+    return {"oferta": preencher(v["campanha_oferta"]), "prompt_agente": preencher(v["campanha_instrucoes"])}
+
+
 def validar_texto(texto: str) -> str:
     texto = texto.strip()
     if not texto:
