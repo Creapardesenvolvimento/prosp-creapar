@@ -5,6 +5,13 @@ from app.models import Blacklist, Lead, LeadStatus
 from app.services import mensagens
 from app.services.mensagens import eh_opt_out
 
+
+@pytest.fixture(autouse=True)
+def _instancia_dos_payloads(db, server):
+    from tests.conftest import cadastrar_instancia
+
+    cadastrar_instancia(db, server, "chip")
+
 WEBHOOK = "/webhooks/evolution/test-webhook-token"
 
 

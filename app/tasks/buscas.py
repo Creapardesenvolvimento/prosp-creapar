@@ -8,6 +8,7 @@ from app.models import Busca
 from app.services import abastecimento
 from app.services import buscas as svc
 from app.services.buscas import BuscaError
+from app.tenancy import clientes_ativos, usar_cliente
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ def iniciar_busca(busca_id: int) -> None:
     with SessionLocal() as db:
         busca = db.get(Busca, busca_id)
         if busca:
+            usar_cliente(db, busca.cliente_id)
             svc.iniciar(db, busca)
             db.commit()
 
@@ -27,6 +29,7 @@ def processar_busca(busca_id: int) -> None:
         if not svc.reivindicar_processamento(db, busca_id):
             return  # outro gatilho (webhook ou polling) já pegou esta busca
         busca = db.get(Busca, busca_id)
+        usar_cliente(db, busca.cliente_id)  # empresas e leads nascem no cliente da busca
         try:
             # Guarda tudo antes de validar: se a validação falhar, os dados pagos ficam no banco.
             svc.guardar_resultados(db, busca)
@@ -58,12 +61,18 @@ def conferir_buscas() -> None:
 
 
 @celery_app.task(name="buscas.abastecer")
-def abastecer() -> int | None:
-    """Beat: se a fila de leads baixou, dispara a próxima busca do plano."""
+def abastecer() -> list[int]:
+    """Beat: para cada cliente, se a fila de leads baixou, dispara a próxima busca do plano dele."""
     with SessionLocal() as db:
-        busca = abastecimento.abastecer(db)
-        db.commit()
-        busca_id = busca.id if busca else None
-    if busca_id:
+        clientes = clientes_ativos(db)
+    criadas = []
+    for cliente_id in clientes:
+        with SessionLocal() as db:
+            usar_cliente(db, cliente_id)
+            busca = abastecimento.abastecer(db)
+            db.commit()
+            if busca:
+                criadas.append(busca.id)
+    for busca_id in criadas:
         iniciar_busca.delay(busca_id)
-    return busca_id
+    return criadas

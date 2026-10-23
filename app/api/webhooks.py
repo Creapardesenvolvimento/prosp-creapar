@@ -13,6 +13,7 @@ from app.db import get_db
 from app.models import Busca, WhatsappNumber
 from app.services import buscas, mensagens, numeros
 from app.services.idempotency import body_key, register_event
+from app.tenancy import cliente_id, usar_cliente
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks")
@@ -53,6 +54,7 @@ def on_message(db: Session, payload: dict):
         dados = mensagens.registrar_propria(db, payload)
         if dados is None:
             return None
+        dados["cliente_id"] = cliente_id(db)  # a conferência adiada roda no mesmo cliente
         return lambda: conferir_mensagem_propria.apply_async((dados,), countdown=15)
     lead = mensagens.registrar_recebida(db, payload)
     if lead is None:
@@ -97,6 +99,14 @@ async def evolution_webhook(token: str, request: Request, db: Session = Depends(
     if not register_event(db, "evolution", body_key(body)):
         logger.info("webhook duplicado ignorado", extra={"event": event, "instance": instance})
         return {"status": "duplicate"}
+
+    # O número que recebeu o evento diz de qual cliente ele é; daí em diante tudo roda nesse cliente.
+    numero = db.scalar(select(WhatsappNumber).where(WhatsappNumber.instance_name == instance)) if instance else None
+    if numero is None:
+        logger.warning("webhook de instância desconhecida", extra={"event": event, "instance": instance})
+        db.commit()
+        return {"status": "ok"}
+    usar_cliente(db, numero.cliente_id)
 
     handler = EVOLUTION_HANDLERS.get(event)
     if handler is None:

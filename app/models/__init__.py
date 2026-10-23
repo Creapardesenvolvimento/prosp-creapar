@@ -1,3 +1,4 @@
+from app.models.cliente import Cliente, DoCliente
 from app.models.campanhas import Campanha, CampanhaFollowup, CampanhaMensagem, CampanhaModo, CampanhaStatus, Envio, EnvioStatus, EnvioTipo
 from app.models.config import Configuracao
 from app.models.empresas import Empresa
@@ -20,6 +21,8 @@ __all__ = [
     "Segmento",
     "Blacklist",
     "Campanha",
+    "Cliente",
+    "DoCliente",
     "CampanhaMensagem",
     "CampanhaModo",
     "CampanhaStatus",
@@ -44,3 +47,5 @@ __all__ = [
     "WebhookEvent",
     "WhatsappNumber",
 ]
+
+import app.tenancy  # noqa: E402,F401  (filtro e carimbo por cliente)

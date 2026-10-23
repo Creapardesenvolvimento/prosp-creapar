@@ -3,8 +3,8 @@ from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.api import agenda, auth, buscas, campanhas, empresas, numeros, painel, prospeccao, roteiros, webhooks
-from app.api.deps import NotAuthenticated
+from app.api import agenda, auth, buscas, campanhas, clientes, empresas, numeros, painel, prospeccao, roteiros, webhooks
+from app.api.deps import NotAuthenticated, SemClienteAtivo
 from app.config import get_settings
 from app.log import setup_logging
 from app.security import session_secret
@@ -31,6 +31,12 @@ def create_app() -> FastAPI:
             return Response(status_code=401, headers={"HX-Redirect": "/login"})
         return RedirectResponse("/login", status_code=303)
 
+    @app.exception_handler(SemClienteAtivo)
+    def sem_cliente(request: Request, exc: SemClienteAtivo):
+        if request.headers.get("HX-Request"):
+            return Response(status_code=401, headers={"HX-Redirect": "/clientes"})
+        return RedirectResponse("/clientes", status_code=303)
+
     @app.get("/health")
     def health():
         return {"status": "ok"}
@@ -42,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(buscas.router)
     app.include_router(prospeccao.router)
     app.include_router(empresas.router)
+    app.include_router(clientes.router)
     app.include_router(campanhas.router)
     app.include_router(roteiros.router)
     app.include_router(webhooks.router)

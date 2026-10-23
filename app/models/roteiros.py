@@ -5,6 +5,7 @@ from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, fun
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.models.cliente import DoCliente
 
 
 class Porte(StrEnum):
@@ -25,11 +26,12 @@ class Etapa(StrEnum):
 ETAPAS = [Etapa.ATENCAO, Etapa.INTERESSE, Etapa.DESEJO, Etapa.ACAO]
 
 
-class Segmento(Base):
+class Segmento(DoCliente, Base):
     __tablename__ = "segmentos"
+    __table_args__ = (UniqueConstraint("cliente_id", "nome", name="uq_segmentos_cliente_nome"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    nome: Mapped[str] = mapped_column(String(120), unique=True)
+    nome: Mapped[str] = mapped_column(String(120))
     # Termos que identificam o segmento na categoria do Google Maps ou no termo da busca.
     palavras_chave: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -37,7 +39,7 @@ class Segmento(Base):
     roteiros: Mapped[list["Roteiro"]] = relationship(back_populates="segmento", cascade="all, delete-orphan")
 
 
-class Roteiro(Base):
+class Roteiro(DoCliente, Base):
     """Texto-base de uma etapa para um segmento e porte."""
 
     __tablename__ = "roteiros"

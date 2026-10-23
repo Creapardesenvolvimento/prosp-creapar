@@ -22,6 +22,14 @@
       <span class="marca-sinal" aria-hidden="true"></span>
       <span><strong>Creapar</strong><small>Prospecção</small></span>
     </a>
+    <form method="post" action="/cliente/trocar" class="seletor-cliente">
+      <label for="cliente-atual">Cliente</label>
+      <select id="cliente-atual" name="cliente_id" onchange="this.form.submit()" title="O painel mostra só os dados do cliente escolhido">
+        {% for c in request.state.clientes or [] %}<option value="{{ c.id }}" {% if request.state.cliente and c.id == request.state.cliente.id %}selected{% endif %}>{{ c.nome }}</option>{% endfor %}
+        {% if not request.state.clientes %}<option value="">nenhum cliente ativo</option>{% endif %}
+      </select>
+      <noscript><button type="submit">Trocar</button></noscript>
+    </form>
     <nav aria-label="Menu principal">
       <div class="grupo">
         <span class="grupo-nome">Operação</span>
@@ -39,6 +47,7 @@
       </div>
       <div class="grupo">
         <span class="grupo-nome">Estrutura</span>
+        {{ item("/clientes", "Clientes", caminho) }}
         {{ item("/numeros", "Números", caminho) }}
         {{ item("/vendedores", "Vendedores", caminho) }}
         {{ item("/servidores", "Servidores", caminho) }}

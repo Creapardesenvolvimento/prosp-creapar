@@ -8,6 +8,13 @@ URL = "/webhooks/evolution/test-webhook-token"
 PAYLOAD = {"event": "connection.update", "instance": "chip-1", "data": {"state": "open"}}
 
 
+@pytest.fixture(autouse=True)
+def _instancia_dos_payloads(db, server):
+    from tests.conftest import cadastrar_instancia
+
+    cadastrar_instancia(db, server, "chip-1")
+
+
 @pytest.fixture
 def calls(monkeypatch):
     received = []

@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.models import Configuracao, NumeroStatus, WhatsappNumber
 from app.services.rampa import Rampa, parse_rampa
 from app.services.telefone import normalizar_telefone
+from app.tenancy import exigir_cliente
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +166,7 @@ def padroes() -> dict:
 
 def valores(db: Session) -> dict:
     atuais = padroes()
+    exigir_cliente(db)  # sem cliente, misturaria as configurações de todos
     for linha in db.query(Configuracao).all():
         if linha.chave in atuais:
             atuais[linha.chave] = linha.valor
@@ -242,7 +244,7 @@ def salvar(db: Session, dados: dict) -> None:
     ):
         raise ConfigError("O WhatsApp de notificações não pode ser um dos números de prospecção.")
     for chave, valor in novos.items():
-        linha = db.get(Configuracao, chave)
+        linha = db.scalar(select(Configuracao).where(Configuracao.chave == chave))
         if linha is None:
             db.add(Configuracao(chave=chave, valor=valor))
         else:
@@ -252,6 +254,7 @@ def salvar(db: Session, dados: dict) -> None:
 
 
 def restaurar_padroes(db: Session) -> None:
+    exigir_cliente(db)
     db.query(Configuracao).delete()
     db.flush()
     logger.info("configurações restauradas para o padrão de fábrica")

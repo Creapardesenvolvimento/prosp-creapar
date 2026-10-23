@@ -209,6 +209,7 @@ def test_config_salva_notificacoes_pelo_painel(logged_client):
     resp = logged_client.post("/config", data=form)
     assert "ok=" in resp.headers["location"]
     with SessionLocal() as s:
+        s.info["cliente_id"] = 1  # sessão de conferência, no cliente padrão
         v = config_sistema.valores(s)
     assert (v["notificar_telefone"], v["resumo_hora"], v["resumo_automatico"], v["avisar_vendedor"]) == (
         NOTIFICACOES, "07:30", True, False,  # checkbox desmarcado no formulário = desligado

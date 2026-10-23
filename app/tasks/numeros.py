@@ -5,6 +5,7 @@ from app.db import SessionLocal
 from app.integrations.chatwoot import ChatwootError
 from app.models import WhatsappNumber
 from app.services import numeros as svc
+from app.tenancy import clientes_ativos, usar_cliente
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,12 @@ def conferir_conexoes() -> int:
 @celery_app.task(name="numeros.virada_do_dia")
 def virada_do_dia() -> None:
     with SessionLocal() as db:
-        svc.garantir_virada(db)
-        db.commit()
+        clientes = clientes_ativos(db)
+    for cliente_id in clientes:
+        with SessionLocal() as db:
+            usar_cliente(db, cliente_id)
+            svc.garantir_virada(db)
+            db.commit()
 
 
 @celery_app.task(

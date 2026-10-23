@@ -5,6 +5,7 @@ from sqlalchemy import DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
+from app.models.cliente import DoCliente
 
 
 class Direcao(StrEnum):
@@ -19,7 +20,7 @@ class Autor(StrEnum):
     HUMANO = "humano"  # alguém do time respondeu pelo Chatwoot ou pelo celular
 
 
-class Mensagem(Base):
+class Mensagem(DoCliente, Base):
     """Histórico da conversa com o lead (o que entrou e o que saiu)."""
 
     __tablename__ = "mensagens"

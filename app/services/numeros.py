@@ -20,6 +20,7 @@ from app.integrations.evolution import EvolutionError
 from app.models import Envio, EnvioStatus, EnvioTipo, EvolutionServer, NumeroStatus, WhatsappNumber
 from app.services import config_sistema
 from app.services.rampa import limite_do_numero
+from app.tenancy import TODOS
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +120,8 @@ def criar_numero(
     if not server.ativo:
         raise NumeroError("Este servidor Evolution está inativo.")
     # O nome vira o nome da caixa de entrada no Chatwoot, então não pode repetir.
-    if db.scalar(select(WhatsappNumber).where(func.lower(WhatsappNumber.nome_exibicao) == nome.lower())):
+    # Vale para todos os clientes: o Chatwoot é um só e a caixa de entrada leva o nome do número.
+    if db.scalar(select(WhatsappNumber).where(func.lower(WhatsappNumber.nome_exibicao) == nome.lower()).execution_options(**TODOS)):
         raise NumeroError("Já existe um número com esse nome. Use um nome diferente (ex.: com um sufixo).")
 
     instance_name = gerar_instance_name(nome)
@@ -361,9 +363,12 @@ def remover(db: Session, numero: WhatsappNumber) -> None:
 
 def conferir_conexoes(db: Session) -> int:
     """Confere o connectionState de todas as instâncias acompanhadas. Retorna quantas mudaram."""
+    from app.tenancy import usar_cliente
+
     mudancas = 0
     numeros = db.scalars(select(WhatsappNumber).where(WhatsappNumber.status.in_(MONITORADOS))).all()
     for numero in numeros:
+        usar_cliente(db, numero.cliente_id)  # rampa e avisos usam as configurações do cliente do número
         try:
             state = evolution.get_client(numero.server).connection_state(numero.instance_name)
         except EvolutionError as exc:
@@ -420,9 +425,11 @@ def garantir_virada(db: Session, agora: datetime | None = None) -> bool:
     """
     from app.services.idempotency import register_event
 
+    from app.tenancy import exigir_cliente
+
     agora = agora or datetime.now(timezone.utc)
     hoje = agora.astimezone(ZoneInfo(get_settings().timezone)).date().isoformat()
-    if not register_event(db, "virada-do-dia", hoje):
+    if not register_event(db, "virada-do-dia", f"{exigir_cliente(db)}:{hoje}"):
         return False
     virada_do_dia(db, agora)
     return True

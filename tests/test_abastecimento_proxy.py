@@ -122,6 +122,7 @@ def test_tela_do_plano(logged_client, db, server, evo, monkeypatch):
     from app.db import SessionLocal
 
     with SessionLocal() as s:
+        s.info["cliente_id"] = 1  # sessão de conferência, no cliente padrão
         v = config_sistema.valores(s)
         assert (v["abastecer_ativo"], v["abastecer_estoque_dias"], v["abastecer_gasto_diario"]) == (True, 3.0, 15.0)
         item_id = s.scalar(select(PlanoBusca.id).where(PlanoBusca.cidade == "Itu"))

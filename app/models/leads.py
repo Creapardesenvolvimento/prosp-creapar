@@ -1,10 +1,11 @@
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func, true
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.models.cliente import DoCliente
 
 
 class BuscaStatus(StrEnum):
@@ -30,7 +31,7 @@ class LeadStatus(StrEnum):
     JA_PROSPECTADO = "ja_prospectado"  # tirado da fila: ele (ou o mesmo WhatsApp em outro cadastro) já foi abordado
 
 
-class Busca(Base):
+class Busca(DoCliente, Base):
     __tablename__ = "buscas"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -63,13 +64,15 @@ class Busca(Base):
         return f"Lista: {self.termo}" if self.importada else f"{self.termo} — {self.cidade}"
 
 
-class Lead(Base):
+class Lead(DoCliente, Base):
     __tablename__ = "leads"
+    # Cada cliente é independente: a mesma empresa pode ser lead de mais de um cliente.
+    __table_args__ = (UniqueConstraint("cliente_id", "telefone", name="uq_leads_cliente_telefone"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     busca_id: Mapped[int | None] = mapped_column(ForeignKey("buscas.id"), index=True)
     nome: Mapped[str] = mapped_column(String(300))
-    telefone: Mapped[str] = mapped_column(String(20), unique=True)  # E.164
+    telefone: Mapped[str] = mapped_column(String(20))  # E.164
     whatsapp_jid: Mapped[str | None] = mapped_column(String(64))
     site: Mapped[str | None] = mapped_column(String(500))
     categoria: Mapped[str | None] = mapped_column(String(200))
@@ -104,7 +107,7 @@ class Lead(Base):
     busca: Mapped[Busca | None] = relationship()
 
 
-class PlanoBusca(Base):
+class PlanoBusca(DoCliente, Base):
     """Termo × cidade na fila do abastecimento automático: vira busca no Apify quando a fila de leads baixa."""
 
     __tablename__ = "plano_buscas"
@@ -122,12 +125,13 @@ class PlanoBusca(Base):
     busca: Mapped[Busca | None] = relationship()
 
 
-class Blacklist(Base):
-    """Telefones que nunca mais recebem mensagem (opt-out ou bloqueio manual)."""
+class Blacklist(DoCliente, Base):
+    """Telefones que nunca mais recebem mensagem deste cliente (opt-out ou bloqueio manual)."""
 
     __tablename__ = "blacklist"
+    __table_args__ = (UniqueConstraint("cliente_id", "telefone", name="uq_blacklist_cliente_telefone"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    telefone: Mapped[str] = mapped_column(String(20), unique=True)  # E.164
+    telefone: Mapped[str] = mapped_column(String(20))  # E.164
     motivo: Mapped[str] = mapped_column(String(200), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

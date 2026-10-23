@@ -5,6 +5,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Te
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.models.cliente import DoCliente
 
 
 class ReuniaoStatus(StrEnum):
@@ -14,7 +15,7 @@ class ReuniaoStatus(StrEnum):
     NAO_COMPARECEU = "nao_compareceu"
 
 
-class Vendedor(Base):
+class Vendedor(DoCliente, Base):
     __tablename__ = "vendedores"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -63,7 +64,7 @@ class VendedorBloqueio(Base):
     vendedor: Mapped[Vendedor] = relationship(back_populates="bloqueios")
 
 
-class Reuniao(Base):
+class Reuniao(DoCliente, Base):
     __tablename__ = "reunioes"
     __table_args__ = (
         # Rede de segurança contra reserva dupla do mesmo vendedor no mesmo horário.

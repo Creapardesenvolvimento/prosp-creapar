@@ -5,6 +5,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.models.cliente import DoCliente
 from app.models.types import EncryptedString
 
 
@@ -28,7 +29,7 @@ class EvolutionServer(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class WhatsappNumber(Base):
+class WhatsappNumber(DoCliente, Base):
     __tablename__ = "whatsapp_numbers"
 
     id: Mapped[int] = mapped_column(primary_key=True)

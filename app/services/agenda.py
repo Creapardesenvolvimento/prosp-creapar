@@ -547,7 +547,9 @@ def resumo_automatico(db: Session, agora: datetime | None = None) -> int | None:
     local = como_utc(agora or datetime.now(timezone.utc)).astimezone(regras.tz)
     if not v["resumo_automatico"] or not v["notificar_telefone"] or local.time() < time.fromisoformat(v["resumo_hora"]):
         return None
-    if not register_event(db, "resumo-do-dia", local.date().isoformat()):
+    from app.tenancy import exigir_cliente
+
+    if not register_event(db, "resumo-do-dia", f"{exigir_cliente(db)}:{local.date().isoformat()}"):
         return None  # já enviado hoje
     reunioes = reunioes_do_dia(db, local.date(), regras)
     if not reunioes:

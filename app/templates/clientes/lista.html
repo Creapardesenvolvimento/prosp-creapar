@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Clientes{% endblock %}
+{% block content %}
+<h1>Clientes</h1>
+<p class="muted" style="margin-top:-8px">Cada cliente tem os próprios números, campanhas, empresas, leads, agenda, roteiros e configurações.
+  Escolha em qual trabalhar; o painel inteiro passa a mostrar só os dados dele.</p>
+{% if erro %}<p class="erro">{{ erro }}</p>{% endif %}
+{% if ok %}<p class="ok">{{ ok }}</p>{% endif %}
+{% if not ativos %}<p class="alerta">Nenhum cliente ativo. Crie um cliente para começar.</p>{% endif %}
+
+<div class="clientes-grade">
+  {% for l in linhas %}{% set c = l.cliente %}
+  <div class="card cliente-card {{ 'arquivado' if not c.ativo }} {{ 'atual' if request.state.cliente and request.state.cliente.id == c.id }}">
+    <div class="titulo" style="margin-bottom:8px">
+      <h2 style="margin:0;flex:1">{{ c.nome }}</h2>
+      {% if not c.ativo %}<span class="status">arquivado</span>
+      {% elif request.state.cliente and request.state.cliente.id == c.id %}<span class="status conectado">trabalhando aqui</span>{% endif %}
+    </div>
+    <div class="numeros-resumo" style="margin:4px 0 12px">
+      <div><strong>{{ l.numeros }}</strong><small>números conectados</small></div>
+      <div><strong>{{ l.campanhas }}</strong><small>campanhas ativas</small></div>
+      <div><strong>{{ l.na_fila }}</strong><small>na fila</small></div>
+      <div><strong>{{ l.envios_24h }}</strong><small>envios 24h</small></div>
+      <div><strong>{{ l.respostas_24h }}</strong><small>respostas 24h</small></div>
+      <div><strong>{{ l.reunioes }}</strong><small>reuniões marcadas</small></div>
+    </div>
+    <div class="acoes">
+      {% if c.ativo %}
+      <form method="post" action="/cliente/trocar"><input type="hidden" name="cliente_id" value="{{ c.id }}"><button>Trabalhar neste cliente</button></form>
+      {% endif %}
+      <details class="gestao">
+        <summary>Gerenciar</summary>
+        <form method="post" action="/clientes/{{ c.id }}/renomear" class="acoes">
+          <input type="text" name="nome" value="{{ c.nome }}" maxlength="120" required>
+          <button class="secundario">Renomear</button>
+        </form>
+        {% if c.ativo %}
+        <form method="post" action="/clientes/{{ c.id }}/arquivar" onsubmit='return confirm({{ ("Arquivar " ~ c.nome ~ "? As campanhas são pausadas e nada mais é enviado. Os dados ficam e dá para reativar.")|tojson }})'>
+          <button class="secundario">Arquivar</button>
+        </form>
+        {% else %}
+        <form method="post" action="/clientes/{{ c.id }}/reativar"><button class="secundario">Reativar</button></form>
+        {% endif %}
+        <form method="post" action="/clientes/{{ c.id }}/excluir" class="acoes excluir-cliente">
+          <small class="erro">Excluir apaga de vez números, campanhas, empresas, leads, conversas e agenda, e desconecta os números na Evolution.</small>
+          <input type="text" name="confirmacao" placeholder="digite {{ c.nome }} para confirmar" autocomplete="off" required>
+          <button class="perigo">Excluir definitivamente</button>
+        </form>
+      </details>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<form method="post" action="/clientes" class="card form" style="margin-top:24px">
+  <h2>Novo cliente</h2>
+  <label>Nome do cliente <input type="text" name="nome" required maxlength="120" placeholder="Ex.: Clínica Sorriso"></label>
+  <label>Empresa que a IA representa <input type="text" name="empresa_nome" maxlength="200" placeholder="Sem preencher, usa o nome do cliente"></label>
+  <label>Nome da atendente (IA) <input type="text" name="atendente_nome" maxlength="200" placeholder="Bruna"></label>
+  <label>Promessa principal <input type="text" name="economia_texto" maxlength="200" placeholder="Ex.: até 30% de economia">
+    <small>Entra no lugar de {economia} nos follow-ups e nas instruções.</small></label>
+  {% if ativos %}
+  <label>Copiar configurações de
+    <select name="copiar_de">
+      <option value="">— começar do padrão —</option>
+      {% for c in ativos %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endfor %}
+    </select>
+    <small>Horários, rampa, limites, follow-up, meta e textos de campanha. O nome, a atendente e o WhatsApp de notificações não vêm.</small>
+  </label>
+  <label class="check"><input type="checkbox" name="copiar_roteiros" value="1"> Copiar também os roteiros (segmentos e etapas)</label>
+  {% endif %}
+  <button type="submit">Criar cliente</button>
+  <small class="muted">Depois de criar, o painel já abre no cliente novo para você conectar os números de WhatsApp dele.</small>
+</form>
+{% endblock %}

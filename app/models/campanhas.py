@@ -5,6 +5,7 @@ from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, T
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.models.cliente import DoCliente
 from app.models.whatsapp import WhatsappNumber
 
 
@@ -40,7 +41,7 @@ campanha_numeros = Table(
 )
 
 
-class Campanha(Base):
+class Campanha(DoCliente, Base):
     __tablename__ = "campanhas"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -95,7 +96,7 @@ class CampanhaFollowup(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class Envio(Base):
+class Envio(DoCliente, Base):
     """Mensagem que o sistema mandou. O id da Evolution separa o que foi o sistema do que foi um humano."""
 
     __tablename__ = "envios"

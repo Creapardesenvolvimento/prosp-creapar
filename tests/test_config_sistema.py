@@ -77,6 +77,7 @@ def test_checkbox_do_pitch(logged_client):
 
     def valor():
         with SessionLocal() as s:  # sessão curta: uma leitura aberta travaria o SQLite para a próxima requisição
+            s.info["cliente_id"] = 1  # sessão de conferência, no cliente padrão
             return config_sistema.valores(s)["pitch_em_sequencia"]
 
     assert valor() is True

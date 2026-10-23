@@ -9,6 +9,13 @@ from app.models import Autor, Direcao, Envio, EnvioStatus, EnvioTipo, Lead, Lead
 from app.services import agente, config_sistema, ia, roteiros
 from app.tasks.agente import responder_lead
 
+
+@pytest.fixture(autouse=True)
+def _instancia_dos_payloads(db, server):
+    from tests.conftest import cadastrar_instancia
+
+    cadastrar_instancia(db, server, "chip")
+
 WEBHOOK = "/webhooks/evolution/test-webhook-token"
 TEL = "5524999990001"
 

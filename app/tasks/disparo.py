@@ -7,6 +7,7 @@ from app.celery_app import celery_app
 from app.config import get_settings
 from app.db import SessionLocal
 from app.services import disparo
+from app.tenancy import clientes_ativos, usar_cliente
 
 logger = logging.getLogger(__name__)
 
@@ -37,4 +38,13 @@ def ciclo_disparo() -> int:
         if not livre:
             return 0
         with SessionLocal() as db:
-            return disparo.ciclo(db)
+            clientes = clientes_ativos(db)
+        enviados = 0
+        for cliente_id in clientes:  # cada cliente com os próprios números, horário, meta e limites
+            with SessionLocal() as db:
+                usar_cliente(db, cliente_id)
+                try:
+                    enviados += disparo.ciclo(db)
+                except Exception:
+                    logger.exception("falha no disparo do cliente", extra={"cliente_id": cliente_id})
+        return enviados

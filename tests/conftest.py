@@ -163,9 +163,17 @@ def conectado(db, server, evo):
     return numero
 
 
+CLIENTE_PADRAO = 1
+
+
 @pytest.fixture(autouse=True)
 def _schema():
+    from app.models import Cliente
+
     Base.metadata.create_all(engine)
+    with SessionLocal() as s:  # como na migração: tudo começa no cliente Brafort10
+        s.add(Cliente(id=CLIENTE_PADRAO, nome="Brafort10"))
+        s.commit()
     yield
     Base.metadata.drop_all(engine)
 
@@ -187,6 +195,7 @@ def evo(monkeypatch, cw):
 @pytest.fixture
 def db():
     with SessionLocal() as session:
+        session.info["cliente_id"] = CLIENTE_PADRAO  # os testes trabalham no cliente padrão, como o painel
         yield session
 
 
@@ -216,3 +225,14 @@ def logged_client(client, user):
     resp = client.post("/login", data={"email": user.email, "senha": "senha-de-teste"})
     assert resp.status_code == 303
     return client
+
+
+def cadastrar_instancia(db, server, instance_name: str):
+    """Número com o nome de instância que os payloads de teste usam: o webhook descobre o cliente por ele."""
+    from app.models import NumeroStatus, WhatsappNumber
+
+    # Desconectado: só identifica o cliente, não entra no rodízio de envios dos testes.
+    numero = WhatsappNumber(server=server, nome_exibicao=instance_name, instance_name=instance_name, status=NumeroStatus.DESCONECTADO)
+    db.add(numero)
+    db.commit()
+    return numero

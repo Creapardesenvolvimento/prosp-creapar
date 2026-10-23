@@ -407,3 +407,22 @@ h2 .status, h1 .status { font-size: 12.5px; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* Vários clientes: seletor no menu e tela de clientes */
+.seletor-cliente { display: grid; gap: 4px; margin: 0 2px; padding: 10px; border-radius: var(--raio-p); background: var(--petroleo-2); box-shadow: inset 3px 0 0 var(--sinal); }
+.seletor-cliente label { color: #9ed3c9; font-size: 12px; font-weight: 600; }
+.seletor-cliente select { width: 100%; padding: 6px 8px; border: 0; border-radius: var(--raio-p); font-weight: 600; color: var(--petroleo); background: #fff; }
+.seletor-cliente select:focus-visible { outline: 2px solid var(--sinal); outline-offset: 2px; }
+@media (max-width: 900px) {
+  .seletor-cliente { order: 2; display: flex; align-items: center; padding: 4px 8px; margin: 0; }
+  .seletor-cliente select { width: auto; max-width: 180px; padding: 4px 6px; }
+}
+.clientes-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+.clientes-grade .card + .card { margin-top: 0; }
+.cliente-card.atual { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.cliente-card.arquivado { opacity: .7; }
+.gestao { width: 100%; margin-top: 8px; }
+.gestao summary { cursor: pointer; color: var(--accent); }
+.gestao form { margin-top: 10px; }
+.excluir-cliente { flex-direction: column; align-items: stretch; border-top: 1px solid var(--border); padding-top: 10px; }
+@media (max-width: 600px) { .clientes-grade { grid-template-columns: 1fr; } }

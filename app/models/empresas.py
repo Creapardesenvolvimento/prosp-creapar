@@ -4,9 +4,10 @@ from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, Stri
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
+from app.models.cliente import DoCliente
 
 
-class Empresa(Base):
+class Empresa(DoCliente, Base):
     """Cada empresa que o Apify devolveu numa busca, virando lead ou não. Guarda tudo o que foi pago."""
 
     __tablename__ = "empresas"

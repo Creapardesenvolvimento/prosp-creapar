@@ -102,6 +102,7 @@ def test_sem_numero_conectado_e_reprocessar(logged_client, client, server, evo, 
     from app.services import numeros
 
     with SessionLocal() as s:
+        s.info["cliente_id"] = 1  # sessão de conferência, no cliente padrão
         numero, _ = numeros.criar_numero(s, "Chip", s.merge(server))
         numeros.aplicar_estado(s, numero, "open")
         s.commit()

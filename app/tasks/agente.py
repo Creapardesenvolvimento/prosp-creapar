@@ -12,6 +12,7 @@ from app.models import Lead, WhatsappNumber
 from app.services import agente, mensagens
 from app.services.agenda import utc
 from app.tasks.agenda import avisar_vendedor
+from app.tenancy import usar_cliente
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ def responder_lead(self, lead_id: int, agora: str | None = None) -> str:
         if not _reivindicar(db, lead_id, momento):
             return "aguardando"
         lead = db.get(Lead, lead_id)
+        usar_cliente(db, lead.cliente_id)
         try:
             resultado = agente.conversar(db, lead)
             reunioes = db.info.pop("reunioes_novas", [])
@@ -67,6 +69,7 @@ def responder_pendentes() -> int:
 @celery_app.task(name="agente.conferir_mensagem_propria")
 def conferir_mensagem_propria(dados: dict) -> bool:
     with SessionLocal() as db:
+        usar_cliente(db, dados.get("cliente_id"))
         lead = mensagens.confirmar_humano(db, dados)
         db.commit()
         lead_id = lead.id if lead else None
