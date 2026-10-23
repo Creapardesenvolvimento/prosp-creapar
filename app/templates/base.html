@@ -4,28 +4,48 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Prospecção{% endblock %} · Creapar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/static/app.css?v={{ static_v }}">
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
-<body>
+<body class="{{ 'com-menu' if user else 'sem-menu' }}">
   {% if user %}
-  <header class="topbar">
-    <strong>Creapar · Prospecção</strong>
-    <nav>
-      <a href="/">Início</a>
-      <a href="/numeros">Números</a>
-      <a href="/prospeccao">Super prospecção</a>
-      <a href="/buscas">Buscas</a>
-      <a href="/campanhas">Campanhas</a>
-      <a href="/empresas">Empresas</a>
-      <a href="/leads">Leads</a>
-      <a href="/roteiros">Roteiros</a>
-      <a href="/agenda">Agenda</a>
-      <a href="/vendedores">Vendedores</a>
-      <a href="/servidores">Servidores</a>
-      <a href="/config">Configurações</a>
+  {% set caminho = request.url.path if request is defined else "" %}
+  {% macro item(href, rotulo, caminho) -%}
+    {% set ativo = (caminho == "/") if href == "/" else caminho.startswith(href) %}
+    <a href="{{ href }}"{% if ativo %} class="ativo" aria-current="page"{% endif %}>{{ rotulo }}</a>
+  {%- endmacro %}
+  <header class="menu">
+    <a class="marca" href="/">
+      <span class="marca-sinal" aria-hidden="true"></span>
+      <span><strong>Creapar</strong><small>Prospecção</small></span>
+    </a>
+    <nav aria-label="Menu principal">
+      <div class="grupo">
+        <span class="grupo-nome">Operação</span>
+        {{ item("/", "Início", caminho) }}
+        {{ item("/prospeccao", "Super prospecção", caminho) }}
+        {{ item("/campanhas", "Campanhas", caminho) }}
+        {{ item("/agenda", "Agenda", caminho) }}
+      </div>
+      <div class="grupo">
+        <span class="grupo-nome">Leads</span>
+        {{ item("/buscas", "Buscas", caminho) }}
+        {{ item("/empresas", "Empresas", caminho) }}
+        {{ item("/leads", "Leads", caminho) }}
+        {{ item("/roteiros", "Roteiros", caminho) }}
+      </div>
+      <div class="grupo">
+        <span class="grupo-nome">Estrutura</span>
+        {{ item("/numeros", "Números", caminho) }}
+        {{ item("/vendedores", "Vendedores", caminho) }}
+        {{ item("/servidores", "Servidores", caminho) }}
+        {{ item("/config", "Configurações", caminho) }}
+      </div>
     </nav>
-    <form method="post" action="/logout">
+    <form method="post" action="/logout" class="sessao">
       <span>{{ user.nome }}</span>
       <button type="submit" class="link">Sair</button>
     </form>
